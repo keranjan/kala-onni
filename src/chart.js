@@ -174,21 +174,32 @@ export function renderScoreChart(container, { scored, windows = [], selectedInde
     }, `${peakEntry.score}`));
 
     // --- pointer surface ---------------------------------------------------
+    // `pan-y` (set in CSS) lets a vertical swipe scroll the panel while a
+    // horizontal drag scrubs through the hours.
     const hit = svg('rect', {
       x: PAD.left, y: PAD.top, width: plotWidth, height: PLOT_HEIGHT,
-      fill: 'transparent', style: 'cursor: crosshair',
+      class: 'chart-hit', fill: 'transparent', style: 'cursor: crosshair',
     });
-    hit.addEventListener('pointermove', (event) => {
+    const pick = (event) => {
       const rect = root.getBoundingClientRect();
       const scale = width / rect.width;
       const localX = (event.clientX - rect.left) * scale - PAD.left;
       const nearest = Math.min(scored.length - 1, Math.max(0, Math.floor(localX / band)));
       select(nearest, { fromPointer: true, clientX: event.clientX, rect });
+    };
+    hit.addEventListener('pointerdown', (event) => {
+      pick(event);
+      onSelect?.(index);
     });
+    hit.addEventListener('pointermove', (event) => {
+      // Follow the finger only while it is down; a mouse hovers without buttons.
+      if (event.pointerType !== 'mouse' && event.buttons === 0) return;
+      pick(event);
+    });
+    hit.addEventListener('pointerup', () => onSelect?.(index));
     hit.addEventListener('pointerleave', () => {
       tooltip.hidden = true;
     });
-    hit.addEventListener('click', () => onSelect?.(index));
     root.append(hit);
 
     wrap.querySelector('svg')?.remove();

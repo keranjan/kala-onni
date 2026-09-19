@@ -5,7 +5,8 @@ todennäköiset kalalajit sekä sääennusteen ja vuorokauden parhaat kalastusaj
 
 Sovellus on riippuvuudeton staattinen web-sovellus – ei palvelinta, ei
 rekisteröitymistä eikä API-avaimia. Kaikki data haetaan ilmaisista avoimista
-rajapinnoista suoraan selaimessa.
+rajapinnoista suoraan selaimessa. Puhelimessa se toimii kuin natiivi sovellus:
+sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 
 ## Ominaisuudet
 
@@ -23,6 +24,18 @@ rajapinnoista suoraan selaimessa.
 - Jokaisesta lajista pyyntitavat, parhaat vuorokaudenajat, paikkavinkit sekä
   alamitta ja rauhoitusaika, kun sellainen on
 - Lajin valinta painottaa kalasään uudelleen juuri sille lajille
+
+**Mobiilikäyttö**
+- Koko näytön kartta ja vedettävä alapaneeli kolmella korkeudella: kurkistus,
+  puolikas ja koko näyttö – vedä kahvasta tai listan yläreunasta
+- Paikannus peukalon ulottuvilla olevana painikkeena, joka pysyy aina paneelin
+  yläpuolella; kaikki kosketuskohteet vähintään 44 × 44 px
+- Tuntikuvaajaa selataan sormella, ja pystypyyhkäisy vierittää normaalisti
+- Lovet ja kotipainikepalkit huomioitu (`safe-area`), eikä osoitepalkin
+  liuku hyppäytä asettelua (`dvh`)
+- Vaakanäytöllä paneeli siirtyy näytön reunaan kartan viereen
+- Asennettavissa kotivalikkoon (PWA) ja toimii offline-tilassa: sovellus,
+  kartan ruudut ja viimeisin ennuste tulevat välimuistista
 
 **Kalasää ja parhaat ajat**
 - Kalaonni-pisteet 0–100 jokaiselle tunnille seuraavan 48 tunnin ajalle
@@ -42,6 +55,10 @@ npm start           # python3 -m http.server 5173
 # avaa http://localhost:5173
 ```
 
+Puhelimella samassa verkossa: avaa `http://<koneen-ip>:5173`. Asennus
+kotivalikkoon ja offline-tuki vaativat `https`-yhteyden, eli käytännössä
+julkaistun osoitteen.
+
 > Selaimen paikannus vaatii `https`- tai `localhost`-yhteyden. Tiedoston
 > avaaminen suoraan `file://`-osoitteesta ei toimi, koska sovellus käyttää
 > ES-moduuleja.
@@ -54,7 +71,12 @@ Julkaisu onnistuu sellaisenaan mihin tahansa staattiseen palveluun
 ```bash
 npm test            # pisteytyksen ja lajisovituksen yksikkötestit (node --test)
 npm run smoke       # selaintesti Playwrightilla, kuvakaappaukset test/screenshots/
+npm run icons       # generoi sovelluskuvakkeet uudelleen
 ```
+
+Selaintesti ajaa kolme läpikäyntiä: työpöytä, puhelin (kosketus, alapaneelin
+vedot, kosketuskohteiden koot, vaakanäyttö) ja offline-tila, jossa sovelluksen
+pitää latautua service workerin välimuistista.
 
 Selaintesti tarjoilee sovelluksen paikallisesti ja vastaa kaikkiin ulkoisiin
 pyyntöihin `test/fixtures.mjs`-kiinnikkeillä, joten se ei tarvitse verkkoa eikä
@@ -88,7 +110,7 @@ veden lämpötilaa, kutuvaiheita, istutuksia eikä paikallisia olosuhteita.
 | [OpenStreetMap](https://www.openstreetmap.org) / Overpass API | kalapaikat, vesistöt, laiturit |
 | [Open-Meteo](https://open-meteo.com) | sääennuste 3 vrk, tunnin tarkkuudella |
 | [Nominatim](https://nominatim.openstreetmap.org) | paikkahaku ja käänteinen geokoodaus |
-| [Leaflet](https://leafletjs.com) | karttakomponentti |
+| [Leaflet](https://leafletjs.com) | karttakomponentti (mukana `assets/vendor/`, ei CDN-riippuvuutta) |
 
 Kaikki ovat ilmaisia ja avoimia palveluita. Vastaukset välimuistitetaan
 selaimeen (kalapaikat 6 h, sää 30 min), jotta palveluita ei kuormiteta turhaan.
@@ -106,8 +128,13 @@ rauhoituksia.
 
 ```
 index.html            sivupohja
-assets/styles.css     teemamuuttujat ja ulkoasu (vaalea + tumma)
+manifest.webmanifest  PWA-määrittely (asennus kotivalikkoon)
+sw.js                 service worker: offline-välimuisti
+assets/styles.css     teemamuuttujat ja ulkoasu (vaalea + tumma, työpöytä + mobiili)
+assets/icons/         sovelluskuvakkeet
+assets/vendor/        Leaflet paikallisena kopiona
 src/app.js            sovelluslogiikan kokoaminen ja tila
+src/sheet.js          mobiilin alapaneeli ja sen eleet
 src/map.js            Leaflet-kartta, merkinnät ja säde
 src/spots.js          Overpass-haku ja vesialueiden luokittelu
 src/species.js        kalalajitietokanta ja lajisovitus
@@ -117,6 +144,7 @@ src/chart.js          tuntikuvaaja (SVG) ja taulukkonäkymä
 src/ui.js             paneelinäkymien renderöinti
 src/geo.js            paikannus ja paikkahaku
 src/util.js           apufunktiot
+tools/make-icons.mjs  kuvakkeiden generointi
 test/                 yksikkötestit, selaintesti ja testikiinnikkeet
 ```
 

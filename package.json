@@ -8,6 +8,7 @@
     "start": "python3 -m http.server 5173",
     "test": "node --test test/*.test.mjs",
     "stubs": "node test/fixtures.mjs --dump",
+    "icons": "node tools/make-icons.mjs",
     "smoke": "node test/smoke.mjs"
   },
   "keywords": [

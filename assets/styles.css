@@ -192,7 +192,12 @@ body {
   border: 1px solid var(--border); border-radius: 999px;
   padding: 6px 12px; font-size: 12px; box-shadow: var(--shadow-1);
 }
-.map-hint { top: 12px; left: 50%; transform: translateX(-50%); }
+.map-hint {
+  top: 12px; left: 50%; transform: translateX(-50%);
+  max-width: calc(100% - 28px); text-align: center;
+  transition: opacity .4s ease, transform .4s ease;
+}
+.map-hint.is-hidden { opacity: 0; transform: translateX(-50%) translateY(-6px); pointer-events: none; }
 .map-legend {
   left: 12px; bottom: 22px; display: flex; gap: 12px; border-radius: var(--radius-sm);
 }
@@ -392,6 +397,58 @@ table.data thead th { color: var(--text-muted); font-weight: 600; }
 .leaflet-popup-content b { display: block; margin-bottom: 2px; }
 .leaflet-container { font-family: var(--font); }
 
+/* ---------- mobile chrome: FAB, sheet handle, offline banner ---------- */
+
+.map-fabs {
+  position: absolute; right: 14px; z-index: 750;
+  /* Sits just above the sheet, wherever the sheet currently is. */
+  bottom: calc(var(--sheet-visible, 0px) + 16px + env(safe-area-inset-bottom));
+  display: none; flex-direction: column; gap: 12px;
+  transition: bottom .3s cubic-bezier(.22, .61, .36, 1), opacity .2s ease;
+}
+body.sheet-dragging .map-fabs,
+body.sheet-dragging .leaflet-control-attribution { transition: none; }
+body[data-sheet="full"] .map-fabs { opacity: 0; pointer-events: none; }
+
+.fab {
+  width: 56px; height: 56px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 22px; line-height: 1;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+  cursor: pointer; touch-action: manipulation;
+}
+.fab:active { transform: scale(.96); }
+.fab.is-busy { opacity: .6; }
+.fab-primary { background: var(--accent); color: #fff; border-color: transparent; }
+
+.sheet-handle {
+  display: none;
+  width: 100%; min-height: 44px; padding: 0;      /* a real tap target, not just a grip */
+  align-items: center; justify-content: center;
+  background: transparent; border: 0; cursor: grab;
+  touch-action: none;
+}
+.sheet-handle:active { cursor: grabbing; }
+.sheet-grip {
+  display: block; width: 44px; height: 5px; margin: 0 auto;
+  border-radius: 999px; background: var(--axis);
+}
+
+.offline-banner {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  top: calc(var(--header-h) + 8px); z-index: 1150;
+  max-width: min(420px, 92vw);
+  padding: 8px 14px; font-size: 12.5px;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-1);
+}
+.offline-banner[hidden] { display: none; }
+
+.chart-hit { touch-action: pan-y; }
+
 /* ---------- toast ---------- */
 
 .toast {
@@ -405,19 +462,118 @@ table.data thead th { color: var(--text-muted); font-weight: 600; }
 .toast[hidden] { display: none; }
 .toast.is-error { border-left-color: var(--critical); }
 
-/* ---------- responsive ---------- */
+/* ---------- mobile: full-bleed map + draggable bottom sheet ---------- */
 
 @media (max-width: 900px) {
-  body { overflow: auto; }
-  .layout { grid-template-columns: 1fr; }
-  .map-wrap { height: 46vh; min-height: 280px; }
-  #map { position: relative; height: 100%; }
-  .panel { border-left: 0; border-top: 1px solid var(--border); }
-  .view { max-height: none; overflow: visible; }
-  .app-header { flex-wrap: wrap; }
-  .search { order: 3; flex-basis: 100%; max-width: none; }
-  .brand-sub { display: none; }
+  :root { --header-h: 52px; }
+
+  /* dvh keeps the layout steady while mobile browser chrome slides away;
+     vh first as a fallback for older iOS. */
+  html, body { height: 100vh; height: 100dvh; overflow: hidden; }
+
+  .app-header {
+    padding: 8px 10px;
+    padding-top: calc(8px + env(safe-area-inset-top));
+    gap: 8px;
+  }
+  .brand-text { display: none; }
+  .brand-mark { font-size: 24px; }
+  .search { order: 0; flex: 1 1 auto; max-width: none; }
+  .search button[type="submit"] { display: none; }
+  .search input { min-height: 44px; font-size: 16px; }   /* 16px stops iOS zoom-on-focus */
+  #locate-btn { display: none; }                          /* lives in the thumb zone instead */
+  .header-actions { gap: 6px; }
+
+  .layout {
+    position: relative;
+    grid-template-columns: 1fr;
+    height: calc(100vh - var(--header-h));
+    height: calc(100dvh - var(--header-h));
+  }
+
+  .map-wrap { position: absolute; inset: 0; height: auto; min-height: 0; }
+  #map { position: absolute; inset: 0; height: auto; }
+  .map-fabs { display: flex; }
   .map-legend { display: none; }
+  .map-hint { top: 10px; font-size: 11.5px; padding: 5px 10px; }
+  .leaflet-control-zoom { display: none; }                /* pinch zoom is enough */
+  /* Attribution must stay readable, so it rides above the sheet too.
+     The descendant selector matches Leaflet's own margin rule's specificity
+     and wins by load order. */
+  .leaflet-bottom .leaflet-control-attribution {
+    font-size: 9px;
+    margin-bottom: calc(var(--sheet-visible, 0px) + 2px);
+    transition: margin-bottom .3s cubic-bezier(.22, .61, .36, 1);
+  }
+  body[data-sheet="full"] .leaflet-bottom .leaflet-control-attribution { opacity: 0; }
+
+  /* The panel is a sheet the thumb can drag between three heights. */
+  .panel {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 94%;
+    z-index: 700;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, .12), 0 -12px 40px rgba(0, 0, 0, .18);
+    transform: translateY(var(--sheet-offset, calc(100% - 158px)));
+    transition: transform .3s cubic-bezier(.22, .61, .36, 1);
+    touch-action: none;
+    overscroll-behavior: contain;
+  }
+  .panel.is-dragging { transition: none; }
+
+  .sheet-handle { display: flex; }
+  .place-bar { padding: 2px 16px 8px; }
+  .place-name { font-size: 16px; }
+
+  .tabs { padding: 4px 10px 0; }
+  .tab { min-height: 48px; font-size: 14px; touch-action: manipulation; }
+
+  .views { touch-action: pan-y; }
+  .view {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 12px 16px calc(32px + env(safe-area-inset-bottom));
+  }
+  .panel[data-snap="peek"] .view { overflow: hidden; }
+
+  /* Touch targets: nothing interactive below 44px. */
+  .btn { min-height: 44px; padding: 11px 14px; touch-action: manipulation; }
+  .toolbar select { min-height: 44px; }
+  .card { padding: 14px; border-radius: 14px; }
+  .list { gap: 10px; }
+  .search-results li button { padding: 13px 12px; }
+
+  .hero { padding: 16px; }
+  .hero-value { font-size: 44px; }
+  .tiles { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
+  .chart-card { padding: 12px 6px 8px; }
+  .chart-foot .btn { margin-left: 0; width: 100%; }
+  .toast { bottom: calc(22px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 420px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .window-why { font-size: 11.5px; }
+}
+
+/* Landscape phones are too short for a bottom sheet: dock it to the side. */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 520px) {
+  .panel {
+    top: 0; bottom: 0; left: auto; height: 100%;
+    width: min(56vw, 400px);
+    border-radius: 16px 0 0 16px;
+    padding-right: env(safe-area-inset-right);
+    transform: none;
+  }
+  .sheet-handle { display: none; }
+  .panel[data-snap="peek"] .view { overflow-y: auto; }
+  .map-fabs { bottom: 16px; right: calc(min(56vw, 400px) + 14px); }
+  /* Keep the attribution on the map, not under the docked panel. */
+  .leaflet-bottom.leaflet-right { right: min(56vw, 400px); }
+  .leaflet-bottom .leaflet-control-attribution { margin-bottom: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

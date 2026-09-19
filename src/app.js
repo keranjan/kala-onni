@@ -9,6 +9,7 @@
 import { DEFAULT_LOCATION } from './config.js';
 import { $, debounce, distanceKm } from './util.js';
 import { createMap } from './map.js';
+import { createBottomSheet } from './sheet.js';
 import { locateMe, searchPlaces, describeLocation } from './geo.js';
 import { fetchSpots } from './spots.js';
 import { fetchWeather } from './weather.js';
@@ -46,11 +47,31 @@ const dom = {
   searchInput: $('#search-input'),
   searchResults: $('#search-results'),
   mapHint: $('#map-hint'),
+  panel: $('#panel'),
+  sheetHandle: $('#sheet-handle'),
+  locateFab: $('#locate-fab'),
+  install: $('#install-btn'),
+  offline: $('#offline-banner'),
 };
 
 const mapView = createMap('map', {
-  onPick: ({ lat, lon }) => setOrigin({ lat, lon }, { label: 'Valittu kohta kartalla', lookUpName: true }),
+  onPick: ({ lat, lon }) => {
+    dismissMapHint();
+    setOrigin({ lat, lon }, { label: 'Valittu kohta kartalla', lookUpName: true });
+  },
 });
+
+/** On a phone the panel is a draggable sheet that covers part of the map. */
+const sheet = createBottomSheet(dom.panel, {
+  handle: dom.sheetHandle,
+  onSnap: () => {
+    // Leaflet needs to know the visible area changed, after the slide ends.
+    setTimeout(() => mapView.invalidate(), 320);
+  },
+});
+
+/** Pixels of map hidden behind the sheet, so markers stay in view. */
+const mapOffset = () => sheet.visibleHeight();
 
 /* ----------------------------------------------------------- derived state */
 
@@ -130,6 +151,11 @@ function recomputeScores() {
 
 /* ----------------------------------------------------------------- actions */
 
+/** The map hint is onboarding, not chrome: it steps aside once it is understood. */
+function dismissMapHint() {
+  dom.mapHint.classList.add('is-hidden');
+}
+
 async function loadSpots() {
   state.spotsError = null;
   renderSkeletons(dom.spotsList, 5);
@@ -146,6 +172,7 @@ async function loadSpots() {
   }
   renderSpotsView();
   renderSpeciesView();
+  setTimeout(dismissMapHint, 6000);
 }
 
 async function loadWeather() {
@@ -173,7 +200,7 @@ async function setOrigin({ lat, lon, accuracy = null }, { label = null, lookUpNa
 
   mapView.setUserLocation({ lat, lon, accuracy });
   mapView.setRadius({ lat, lon, radiusKm: state.radiusKm });
-  mapView.fitTo(lat, lon, state.radiusKm);
+  mapView.fitTo(lat, lon, state.radiusKm, { offsetY: mapOffset() });
   renderPlaceBar();
   writeHash();
 
@@ -195,7 +222,8 @@ function selectSpot(spot, { fly = true, focusTab = false } = {}) {
   state.selectedSpot = spot;
   state.selectedHour = 0;
   mapView.highlightSpot(spot.id, { openPopup: !fly });
-  if (fly) mapView.flyTo(spot.lat, spot.lon, 13);
+  if (fly) mapView.flyTo(spot.lat, spot.lon, 13, { offsetY: mapOffset() });
+  sheet.expand();
   renderPlaceBar();
   renderSpotsView();
   renderSpeciesView();
@@ -230,7 +258,10 @@ function showTab(name) {
 
 for (const tab of TABS) {
   const button = document.getElementById(`tab-${tab}`);
-  button.addEventListener('click', () => showTab(tab));
+  button.addEventListener('click', () => {
+    showTab(tab);
+    sheet.expand();
+  });
   button.addEventListener('keydown', (event) => {
     const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
     if (!step) return;
@@ -243,9 +274,11 @@ for (const tab of TABS) {
 
 /* ---------------------------------------------------------------- controls */
 
-dom.locate.addEventListener('click', async () => {
+async function runLocate() {
   dom.locate.disabled = true;
   dom.locate.textContent = 'Paikannetaan…';
+  dom.locateFab.classList.add('is-busy');
+  dom.locateFab.disabled = true;
   try {
     const position = await locateMe();
     await setOrigin(position, { label: 'Nykyinen sijaintisi', lookUpName: true });
@@ -254,13 +287,18 @@ dom.locate.addEventListener('click', async () => {
   } finally {
     dom.locate.disabled = false;
     dom.locate.innerHTML = '<span aria-hidden="true">📍</span> Paikanna minut';
+    dom.locateFab.classList.remove('is-busy');
+    dom.locateFab.disabled = false;
   }
-});
+}
+
+dom.locate.addEventListener('click', runLocate);
+dom.locateFab.addEventListener('click', runLocate);
 
 dom.radius.addEventListener('change', () => {
   state.radiusKm = Number(dom.radius.value);
   mapView.setRadius({ ...state.origin, radiusKm: state.radiusKm });
-  mapView.fitTo(state.origin.lat, state.origin.lon, state.radiusKm);
+  mapView.fitTo(state.origin.lat, state.origin.lon, state.radiusKm, { offsetY: mapOffset() });
   writeHash();
   loadSpots();
 });
@@ -296,6 +334,7 @@ const runSearch = debounce(async (query) => {
       button.addEventListener('click', () => {
         dom.searchResults.hidden = true;
         dom.searchInput.value = hit.name;
+        dom.searchInput.blur();
         setOrigin({ lat: hit.lat, lon: hit.lon }, { name: hit.name, label: hit.description });
       });
       item.append(button);
@@ -320,6 +359,47 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (ch) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
   ));
+}
+
+/* ------------------------------------- install, connection, service worker */
+
+let installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  // Keep the browser's own banner away and offer installing on our terms.
+  event.preventDefault();
+  installPrompt = event;
+  dom.install.hidden = false;
+});
+
+dom.install.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  dom.install.hidden = true;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  if (outcome === 'accepted') toast('Kala-Onni lisättiin laitteeseesi.');
+});
+
+window.addEventListener('appinstalled', () => {
+  dom.install.hidden = true;
+  installPrompt = null;
+});
+
+function updateConnectionState() {
+  dom.offline.hidden = navigator.onLine;
+}
+window.addEventListener('online', updateConnectionState);
+window.addEventListener('offline', updateConnectionState);
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost') return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      /* offline support is a bonus, never a blocker */
+    });
+  });
 }
 
 /* ------------------------------------------------------- shareable location */
@@ -348,6 +428,8 @@ async function boot() {
   } catch { /* ignore */ }
 
   showTab('spots');
+  updateConnectionState();
+  registerServiceWorker();
 
   const fromHash = readHash();
   if (fromHash) {

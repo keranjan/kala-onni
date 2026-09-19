@@ -100,13 +100,27 @@ export function createMap(elementId, { onPick } = {}) {
     return marker;
   }
 
-  function flyTo(lat, lon, zoom = map.getZoom()) {
-    map.flyTo([lat, lon], Math.max(zoom, 12), { duration: 0.7 });
+  /**
+   * `offsetY` is how many pixels of the map are covered from the bottom
+   * (the sheet on a phone). The target is lifted by half of it so it lands in
+   * the middle of what the user can actually see.
+   */
+  function flyTo(lat, lon, zoom = map.getZoom(), { offsetY = 0 } = {}) {
+    const targetZoom = Math.max(zoom, 12);
+    let center = L.latLng(lat, lon);
+    if (offsetY > 0) {
+      const point = map.project(center, targetZoom).add([0, offsetY / 2]);
+      center = map.unproject(point, targetZoom);
+    }
+    map.flyTo(center, targetZoom, { duration: 0.7 });
   }
 
-  function fitTo(lat, lon, radiusKm) {
+  function fitTo(lat, lon, radiusKm, { offsetY = 0 } = {}) {
     const bounds = L.latLng(lat, lon).toBounds(radiusKm * 2000);
-    map.fitBounds(bounds, { padding: [24, 24] });
+    map.fitBounds(bounds, {
+      paddingTopLeft: [24, 24],
+      paddingBottomRight: [24, 24 + offsetY],
+    });
   }
 
   return { map, setUserLocation, setRadius, setSpots, highlightSpot, flyTo, fitTo, invalidate: () => map.invalidateSize() };
