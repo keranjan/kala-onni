@@ -94,10 +94,13 @@ export function makeWeatherPayload({ lat = 61.4978, lon = 23.761, startDate = '2
   };
 }
 
-/** Overpass style answer with a lake, a river, a pond and a marked fishing spot. */
-export function makeOverpassPayload({ lat = 61.4978, lon = 23.761 } = {}) {
-  return {
-    elements: [
+/**
+ * Overpass style answer. The app asks in two halves – marked fishing spots
+ * first, named waters second – so the fixture can return either.
+ * @param {{lat?:number, lon?:number, part?:'all'|'spots'|'water'}} options
+ */
+export function makeOverpassPayload({ lat = 61.4978, lon = 23.761, part = 'all' } = {}) {
+  const water = [
       {
         type: 'way', id: 101, center: { lat: lat + 0.02, lon: lon + 0.015 },
         tags: { name: 'Näsijärvi', natural: 'water', water: 'lake' },
@@ -107,19 +110,30 @@ export function makeOverpassPayload({ lat = 61.4978, lon = 23.761 } = {}) {
         tags: { name: 'Tammerkoski', waterway: 'river' },
       },
       {
-        type: 'node', id: 103, lat: lat + 0.008, lon: lon - 0.02,
-        tags: { name: 'Kaupin kalastuslaituri', leisure: 'fishing', fishing: 'yes', wheelchair: 'yes' },
-      },
-      {
         type: 'way', id: 104, center: { lat: lat - 0.05, lon: lon - 0.05 },
         tags: { name: 'Iidesjärvi', natural: 'water', water: 'pond' },
       },
-      {
-        type: 'node', id: 105, lat: lat + 0.001, lon: lon + 0.001,
-        tags: { leisure: 'slipway', name: 'Veneluiska' },
-      },
-    ],
-  };
+  ];
+
+  const spots = [
+    {
+      type: 'node', id: 103, lat: lat + 0.008, lon: lon - 0.02,
+      tags: { name: 'Kaupin kalastuslaituri', leisure: 'fishing', fishing: 'yes', wheelchair: 'yes' },
+    },
+    {
+      type: 'node', id: 105, lat: lat + 0.001, lon: lon + 0.001,
+      tags: { leisure: 'slipway', name: 'Veneluiska' },
+    },
+  ];
+
+  if (part === 'spots') return { elements: spots };
+  if (part === 'water') return { elements: water };
+  return { elements: [...water, ...spots] };
+}
+
+/** Which half of the search a raw Overpass query string asks for. */
+export function overpassPartFor(query = '') {
+  return query.includes('"leisure"="fishing"') ? 'spots' : 'water';
 }
 
 /** Nominatim style search answer. */

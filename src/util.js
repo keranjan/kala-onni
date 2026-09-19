@@ -137,6 +137,21 @@ export const cache = {
       /* private mode or quota exceeded – caching is optional */
     }
   },
+  /**
+   * Read an entry regardless of age. Used as a last resort when the network
+   * fails: yesterday's spots beat an empty list at the shore.
+   */
+  getStale(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (!entry) return null;
+      return { value: entry.value, ageMs: Date.now() - entry.savedAt };
+    } catch {
+      return null;
+    }
+  },
   /** Remove entries written by an earlier version of the app. */
   prune() {
     try {

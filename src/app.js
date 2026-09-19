@@ -23,6 +23,7 @@ const state = {
   origin: { ...DEFAULT_LOCATION },
   radiusKm: 10,
   spots: [],
+  spotsNotice: null,
   selectedSpot: null,
   speciesId: null,
   weather: null,
@@ -106,8 +107,10 @@ function renderSpotsView() {
     spots: state.spots,
     selectedId: state.selectedSpot?.id,
     error: state.spotsError,
+    notice: state.spotsNotice,
     radiusKm: state.radiusKm,
     onSelect: (spot) => selectSpot(spot, { fly: true }),
+    onRetry: () => loadSpots({ force: true }),
   });
 }
 
@@ -156,21 +159,50 @@ function dismissMapHint() {
   dom.mapHint.classList.add('is-hidden');
 }
 
+/** What to tell the reader when only part of the search came through. */
+function spotsNoticeFor(result) {
+  const notes = [];
+  if (result.stale) {
+    const hours = Math.max(1, Math.round((result.staleAgeMs || 0) / 3600000));
+    notes.push(`Overpass ei juuri nyt vastaa – näytetään noin ${hours} h vanhat tiedot.`);
+  }
+  for (const failure of result.failures) {
+    notes.push(`Haku “${failure.name}” ei onnistunut (${failure.reason}).`);
+  }
+  return notes.length ? notes.join(' ') : null;
+}
+
+function showSpots(spots) {
+  state.spots = spots;
+  mapView.setSpots(spots, { onSelect: (spot) => selectSpot(spot, { fly: false, focusTab: true }) });
+  if (state.selectedSpot) mapView.highlightSpot(state.selectedSpot.id);
+  renderSpotsView();
+}
+
 async function loadSpots() {
   state.spotsError = null;
+  state.spotsNotice = null;
   renderSkeletons(dom.spotsList, 5);
+
+  let paintedEarly = false;
   try {
-    const spots = await fetchSpots(state.origin.lat, state.origin.lon, state.radiusKm);
-    state.spots = spots;
-    mapView.setSpots(spots, { onSelect: (spot) => selectSpot(spot, { fly: false, focusTab: true }) });
-    if (state.selectedSpot) mapView.highlightSpot(state.selectedSpot.id);
+    const result = await fetchSpots(state.origin.lat, state.origin.lon, state.radiusKm, {
+      // Marked fishing spots arrive first; show them while the water search runs.
+      onPartial: (spots) => {
+        paintedEarly = true;
+        showSpots(spots);
+      },
+    });
+    state.spotsNotice = spotsNoticeFor(result);
+    showSpots(result.spots);
+    if (paintedEarly && result.spots.length > state.spots.length) renderSpotsView();
   } catch (error) {
     state.spots = [];
     state.spotsError = error.message;
     mapView.setSpots([]);
-    toast(error.message, { error: true });
+    renderSpotsView();
+    toast('Kalapaikkojen haku ei onnistunut.', { error: true });
   }
-  renderSpotsView();
   renderSpeciesView();
   setTimeout(dismissMapHint, 6000);
 }

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 
 import { chromium } from 'playwright';
-import { makeWeatherPayload, makeOverpassPayload, makeGeocodePayload } from './fixtures.mjs';
+import { makeWeatherPayload, makeOverpassPayload, makeGeocodePayload, overpassPartFor } from './fixtures.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SHOTS = join(ROOT, 'test', 'screenshots');
@@ -50,13 +50,23 @@ function startServer() {
   return new Promise((resolve) => server.listen(PORT, () => resolve(server)));
 }
 
-async function stubNetwork(page) {
+async function stubNetwork(page, { failWaterQuery = false } = {}) {
   const json = (body) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
   await page.route('**tile.openstreetmap.org/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL }));
   await page.route('**api.open-meteo.com/**', (route) => route.fulfill(json(makeWeatherPayload(HOME))));
-  await page.route('**overpass**', (route) => route.fulfill(json(makeOverpassPayload(HOME))));
+  // The app asks in two halves; answer each with its own slice, and optionally
+  // let the heavy one fail the way a busy Overpass mirror does.
+  await page.route('**overpass**', (route) => {
+    // The body is form-encoded; decode it before deciding which half this is.
+    const query = new URLSearchParams(route.request().postData() || '').get('data') || '';
+    const part = overpassPartFor(query);
+    if (failWaterQuery && part === 'water') {
+      return route.fulfill({ status: 504, contentType: 'text/plain', body: 'gateway timeout' });
+    }
+    return route.fulfill(json(makeOverpassPayload({ ...HOME, part })));
+  });
   await page.route('**nominatim.openstreetmap.org/search**', (route) => route.fulfill(json(makeGeocodePayload())));
   await page.route('**nominatim.openstreetmap.org/reverse**', (route) =>
     route.fulfill(json({ name: 'Tampere', address: { city: 'Tampere', county: 'Pirkanmaa' } })));
@@ -257,6 +267,41 @@ async function mobileRun(browser) {
   return problems;
 }
 
+/** A busy Overpass must degrade to the fast half, not to an empty screen. */
+async function degradedRun(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    locale: 'fi-FI',
+    permissions: ['geolocation'],
+    geolocation: { latitude: HOME.lat, longitude: HOME.lon },
+    serviceWorkers: 'block',
+  });
+  const page = await context.newPage();
+  await stubNetwork(page, { failWaterQuery: true });
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+
+  await page.waitForSelector('#spots-list .card', { timeout: 20000 });
+  const titles = await page.$$eval('#spots-list .card-title', (nodes) => nodes.map((n) => n.textContent));
+  assert.ok(titles.includes('Kaupin kalastuslaituri'),
+    `marked fishing spots must still be listed, got: ${titles.join(', ')}`);
+  assert.ok(!titles.includes('Näsijärvi'), 'the failed half has nothing to contribute');
+
+  const notice = await page.textContent('#spots-notice');
+  assert.match(notice, /vesistöt/, `the notice must name the half that failed: ${notice}`);
+  assert.ok(await page.locator('#spots-notice .btn').isVisible(), 'a retry must be offered');
+
+  // The species and weather views keep working from the spots we do have.
+  await page.locator('#spots-list .card').first().tap();
+  await page.waitForSelector('#species-list .card', { timeout: 10000 });
+  await page.tap('#tab-weather');
+  await page.waitForSelector('#view-weather .hero-value', { timeout: 10000 });
+
+  await page.screenshot({ path: join(SHOTS, 'm5-osittainen.png') });
+  await context.close();
+}
+
 /** The service worker must serve the shell when the network is gone. */
 async function offlineRun(browser) {
   const context = await browser.newContext({
@@ -390,6 +435,7 @@ async function run() {
 
     await checkPwaAssets();
     failures.push(...await mobileRun(browser));
+    await degradedRun(browser);
     await offlineRun(browser);
   } finally {
     if (failures.length) console.error('Selainvirheet:\n' + failures.join('\n'));

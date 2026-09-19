@@ -23,6 +23,16 @@ export const TILE_ATTRIBUTION =
   '<a href="https://open-meteo.com/">Open-Meteo</a>';
 
 export const SPOTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Overpass is a free, shared service and the water query is heavy in a country
+ * this full of lakes. Keep the waiting bounded: marked fishing spots answer
+ * quickly and are shown first, the water search gets longer but not forever,
+ * and the whole attempt – including mirror fallbacks – stops at the budget.
+ */
+export const OVERPASS_SPOT_TIMEOUT_MS = 16000;
+export const OVERPASS_WATER_TIMEOUT_MS = 26000;
+export const OVERPASS_TOTAL_BUDGET_MS = 55000;
 export const WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
 export const FORECAST_DAYS = 3;
 export const MAX_SPOTS = 120;

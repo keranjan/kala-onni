@@ -79,6 +79,9 @@
 
 * { box-sizing: border-box; }
 
+/* No blue flash on tap; :active states carry the feedback instead. */
+button, a, select, input, .card, .tab { -webkit-tap-highlight-color: transparent; }
+
 html, body {
   margin: 0;
   height: 100%;

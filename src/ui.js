@@ -23,11 +23,18 @@ export function renderSkeletons(container, count = 4) {
 
 /* ---------------------------------------------------------------- spots */
 
-export function renderSpots(container, { spots, selectedId, error, radiusKm, onSelect }) {
+export function renderSpots(container, { spots, selectedId, error, notice, radiusKm, onSelect, onRetry }) {
   container.textContent = '';
 
+  const retryButton = () => el('button', {
+    class: 'btn btn-ghost',
+    type: 'button',
+    style: 'margin-top:10px',
+    onclick: () => onRetry?.(),
+  }, 'Yritä uudelleen');
+
   if (error) {
-    container.append(el('div', { class: 'note' }, error));
+    container.append(el('div', { class: 'note' }, error, el('br'), retryButton()));
     return;
   }
   if (!spots.length) {
@@ -36,6 +43,11 @@ export function renderSpots(container, { spots, selectedId, error, radiusKm, onS
       el('br'),
       'Kasvata sädettä tai siirrä karttaa toiselle alueelle.'));
     return;
+  }
+
+  if (notice) {
+    container.append(el('div', { class: 'note', id: 'spots-notice' },
+      el('strong', {}, '⚠️ '), notice, el('br'), retryButton()));
   }
 
   const marked = spots.filter((s) => s.isFishingSpot).length;

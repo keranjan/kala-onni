@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { makeWeatherPayload, makeOverpassPayload } from './fixtures.mjs';
+import { makeWeatherPayload, makeOverpassPayload, overpassPartFor } from './fixtures.mjs';
 
 // A minimal localStorage, installed before the modules that use it run.
 class MemoryStorage {
@@ -23,11 +23,24 @@ class MemoryStorage {
 globalThis.localStorage = new MemoryStorage();
 
 let calls = [];
-globalThis.fetch = async (url) => {
+/** Which Overpass halves should fail, by part name. */
+let failing = new Set();
+
+globalThis.fetch = async (url, options = {}) => {
   const href = String(url);
-  calls.push(href);
-  const body = href.includes('open-meteo') ? makeWeatherPayload() : makeOverpassPayload();
-  return { ok: true, status: 200, json: async () => body };
+  if (href.includes('open-meteo')) {
+    calls.push('weather');
+    return { ok: true, status: 200, json: async () => makeWeatherPayload() };
+  }
+
+  const part = overpassPartFor(options.body?.get?.('data') ?? '');
+  calls.push(`overpass:${part}`);
+  if (failing.has(part)) {
+    const error = new Error('The operation was aborted.');
+    error.name = 'AbortError';
+    throw error;
+  }
+  return { ok: true, status: 200, json: async () => makeOverpassPayload({ part }) };
 };
 
 const { fetchWeather, normaliseWeather } = await import('../src/weather.js');
@@ -71,13 +84,74 @@ test('the cached forecast keeps a fresh "now", not the one it was stored with', 
 test('cached spots parse back into sorted, measured spots', async () => {
   localStorage.clear();
   calls = [];
+  failing = new Set();
 
   const first = await fetchSpots(61.4978, 23.761, 10);
+  assert.equal(calls.length, 2, 'the two halves are asked separately');
+  assert.equal(first.partial, false);
+
   const second = await fetchSpots(61.4978, 23.761, 10);
-  assert.equal(calls.length, 1, 'the second call must be served from the cache');
-  assert.deepEqual(second.map((s) => s.id), first.map((s) => s.id));
-  assert.ok(second.every((spot) => Number.isFinite(spot.distanceKm)));
-  assert.ok(second[0].isFishingSpot, 'marked fishing spots stay first');
+  assert.equal(calls.length, 2, 'the second call must be served from the cache');
+  assert.deepEqual(second.spots.map((s) => s.id), first.spots.map((s) => s.id));
+  assert.ok(second.spots.every((spot) => Number.isFinite(spot.distanceKm)));
+  assert.ok(second.spots[0].isFishingSpot, 'marked fishing spots stay first');
+});
+
+test('the fast half is shown even when the water search fails', async () => {
+  localStorage.clear();
+  calls = [];
+  failing = new Set(['water']);
+
+  const partialSpots = [];
+  const result = await fetchSpots(61.4978, 23.761, 10, {
+    onPartial: (spots) => partialSpots.push(spots),
+  });
+
+  assert.ok(result.spots.length > 0, 'a failing half must not empty the list');
+  assert.ok(result.spots.some((spot) => spot.name === 'Kaupin kalastuslaituri'));
+  assert.equal(result.partial, true);
+  assert.equal(result.failures[0].name, 'vesistöt');
+  assert.equal(result.failures[0].reason, 'haku kesti liian kauan',
+    'an abort must be reported as a timeout, not as a raw fetch error');
+  assert.ok(partialSpots.length >= 1, 'marked spots are rendered before the slow half returns');
+});
+
+test('a total failure falls back to whatever the cache still holds', async () => {
+  localStorage.clear();
+  calls = [];
+  failing = new Set();
+  await fetchSpots(61.4978, 23.761, 10);          // warm the cache
+
+  // Age both entries past the TTL and make every request fail.
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key.includes(':spots:')) continue;
+    const entry = JSON.parse(localStorage.getItem(key));
+    entry.savedAt = Date.now() - 9 * 60 * 60 * 1000;
+    localStorage.setItem(key, JSON.stringify(entry));
+  }
+  failing = new Set(['spots', 'water']);
+
+  const result = await fetchSpots(61.4978, 23.761, 10);
+  assert.ok(result.spots.length > 0, 'stale spots beat an empty list at the shore');
+  assert.equal(result.stale, true);
+  assert.ok(result.staleAgeMs > 8 * 60 * 60 * 1000);
+});
+
+test('with nothing cached, a total failure explains itself in Finnish', async () => {
+  localStorage.clear();
+  failing = new Set(['spots', 'water']);
+
+  await assert.rejects(
+    () => fetchSpots(62.1, 25.5, 10),
+    (error) => {
+      assert.match(error.message, /Kalapaikkojen haku ei onnistunut/);
+      assert.match(error.message, /haku kesti liian kauan/);
+      assert.match(error.message, /pienennä hakusädettä/);
+      assert.ok(!/abort/i.test(error.message), 'no raw English fetch errors for the reader');
+      return true;
+    },
+  );
 });
 
 test('an entry written in an older shape is replaced, not trusted', async () => {

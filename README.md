@@ -14,6 +14,10 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 - Paikannus selaimen sijainnilla, paikkakuntahaku tai kartan napautus
 - Lähialueen kohteet OpenStreetMapista 5–50 km säteellä: merkityt
   kalastuspaikat, järvet, joet, lammet, laiturit ja veneluiskat
+- Haku tehdään kahdessa osassa: merkityt kalastuspaikat vastaavat nopeasti ja
+  näkyvät heti, raskaampi vesistöhaku täydentää listaa perässä
+- Jos toinen puolisko ei vastaa, toinen näytetään silti – ja jos Overpass on
+  kokonaan alhaalla, näytetään viimeksi haetut tiedot niiden iän kera
 - Merkityt kalastuspaikat erottuvat omalla merkillään, ja etäisyys näkyy
   jokaisessa kohteessa
 - Jaettava linkki: sijainti ja hakusäde tallentuvat osoitteen loppuun
@@ -114,6 +118,9 @@ veden lämpötilaa, kutuvaiheita, istutuksia eikä paikallisia olosuhteita.
 
 Kaikki ovat ilmaisia ja avoimia palveluita. Vastaukset välimuistitetaan
 selaimeen (kalapaikat 6 h, sää 30 min), jotta palveluita ei kuormiteta turhaan.
+Overpass-peilipalvelimia käytetään vuorotellen satunnaisesta aloituskohdasta,
+ja haulla on kokonaisaikabudjetti – odottaminen ei jatku loputtomiin, vaan
+käyttäjä saa sen mikä ehti valmistua.
 
 ## Luvat ja säännöt
 
