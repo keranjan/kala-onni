@@ -8,7 +8,10 @@
  * place data   still shown offline
  */
 
-const VERSION = 'kalaonni-v1';
+// Bumping this drops the previous caches on activate, so a fix reaches
+// installed clients on their next load instead of lingering behind a
+// stale-while-revalidate copy.
+const VERSION = 'kalaonni-v2';
 const SHELL_CACHE = `${VERSION}-shell`;
 const TILE_CACHE = `${VERSION}-tiles`;
 const DATA_CACHE = `${VERSION}-data`;

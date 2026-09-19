@@ -1,7 +1,7 @@
 /** Open-Meteo forecast fetching, normalised into hour and day records. */
 
 import { OPEN_METEO_URL, FORECAST_DAYS, WEATHER_CACHE_TTL_MS } from './config.js';
-import { cache, fetchWithTimeout, parseApiTime } from './util.js';
+import { cache, fetchWithTimeout, parseApiTime, CACHE_VERSION } from './util.js';
 
 const HOURLY_FIELDS = [
   'temperature_2m',
@@ -55,12 +55,20 @@ export const describeWeatherCode = (code) => WEATHER_CODES[code] || ['Vaihteleva
 
 /**
  * Fetch and normalise the forecast for a coordinate.
- * Results are cached per ~1 km grid cell for 30 minutes.
+ * The raw payload is cached per ~1 km grid cell for 30 minutes and normalised
+ * on every read: the normalised form holds a Map and a "now" timestamp, and
+ * neither survives a round trip through JSON.
  */
 export async function fetchWeather(lat, lon) {
-  const key = `kalaonni:weather:${lat.toFixed(2)}:${lon.toFixed(2)}`;
+  const key = `kalaonni:weather:${CACHE_VERSION}:${lat.toFixed(2)}:${lon.toFixed(2)}`;
   const cached = cache.get(key, WEATHER_CACHE_TTL_MS);
-  if (cached) return cached;
+  if (cached) {
+    try {
+      return normaliseWeather(cached);
+    } catch {
+      /* unreadable entry – fall through and fetch a fresh forecast */
+    }
+  }
 
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
@@ -77,9 +85,8 @@ export async function fetchWeather(lat, lon) {
   if (!response.ok) throw new Error(`Sääpalvelu vastasi virheellä ${response.status}`);
   const raw = await response.json();
 
-  const weather = normaliseWeather(raw);
-  cache.set(key, weather);
-  return weather;
+  cache.set(key, raw);
+  return normaliseWeather(raw);
 }
 
 /** Turn the column-oriented Open-Meteo payload into per-hour and per-day records. */

@@ -1,7 +1,7 @@
 /** Nearby fishing spots and water bodies from OpenStreetMap via Overpass. */
 
 import { OVERPASS_ENDPOINTS, SPOTS_CACHE_TTL_MS, MAX_SPOTS } from './config.js';
-import { cache, distanceKm, fetchWithTimeout } from './util.js';
+import { cache, distanceKm, fetchWithTimeout, CACHE_VERSION } from './util.js';
 import { WATER_TYPES } from './species.js';
 
 /**
@@ -175,9 +175,15 @@ export function parseOverpass(data, origin, radiusKm) {
  */
 export async function fetchSpots(lat, lon, radiusKm) {
   const origin = { lat, lon };
-  const key = `kalaonni:spots:${lat.toFixed(3)}:${lon.toFixed(3)}:${radiusKm}`;
+  const key = `kalaonni:spots:${CACHE_VERSION}:${lat.toFixed(3)}:${lon.toFixed(3)}:${radiusKm}`;
   const cached = cache.get(key, SPOTS_CACHE_TTL_MS);
-  if (cached) return parseOverpass(cached, origin, radiusKm);
+  if (cached) {
+    try {
+      return parseOverpass(cached, origin, radiusKm);
+    } catch {
+      /* unreadable entry – fall through and query Overpass again */
+    }
+  }
 
   const query = buildQuery(lat, lon, Math.round(radiusKm * 1000));
   let lastError = null;

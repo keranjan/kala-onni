@@ -110,6 +110,13 @@ export function debounce(fn, delay = 350) {
   };
 }
 
+/**
+ * Cache keys carry a version. When a stored payload's shape changes, bumping
+ * this makes every reader skip the old entries instead of choking on them.
+ */
+export const CACHE_VERSION = 'v2';
+const CACHE_PREFIX = 'kalaonni:';
+
 /** localStorage-backed cache; silently degrades when storage is unavailable. */
 export const cache = {
   get(key, maxAgeMs) {
@@ -128,6 +135,20 @@ export const cache = {
       localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), value }));
     } catch {
       /* private mode or quota exceeded – caching is optional */
+    }
+  },
+  /** Remove entries written by an earlier version of the app. */
+  prune() {
+    try {
+      const stale = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(CACHE_PREFIX) && !key.includes(`:${CACHE_VERSION}:`)) stale.push(key);
+      }
+      for (const key of stale) localStorage.removeItem(key);
+      return stale.length;
+    } catch {
+      return 0;
     }
   },
 };

@@ -7,7 +7,7 @@
  */
 
 import { DEFAULT_LOCATION } from './config.js';
-import { $, debounce, distanceKm } from './util.js';
+import { $, cache, debounce, distanceKm } from './util.js';
 import { createMap } from './map.js';
 import { createBottomSheet } from './sheet.js';
 import { locateMe, searchPlaces, describeLocation } from './geo.js';
@@ -427,6 +427,7 @@ async function boot() {
     if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
   } catch { /* ignore */ }
 
+  cache.prune();          // drop entries written by an older version
   showTab('spots');
   updateConnectionState();
   registerServiceWorker();
