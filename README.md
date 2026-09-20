@@ -18,8 +18,11 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
   näkyvät heti, raskaampi vesistöhaku täydentää listaa perässä
 - Jos toinen puolisko ei vastaa, toinen näytetään silti – ja jos Overpass on
   kokonaan alhaalla, näytetään viimeksi haetut tiedot niiden iän kera
-- Merkityt kalastuspaikat erottuvat omalla merkillään, ja etäisyys näkyy
-  jokaisessa kohteessa
+- Kohteet on väri- ja ikonikoodattu tyypeittäin: kalapaikat ja laiturit,
+  järvet ja lammet, joet ja kosket, meri sekä muut vesialueet
+- Jokaisen tyypin voi piilottaa suodatinpainikkeilla – ne ovat sekä kartalla
+  että paneelissa, näyttävät osumien määrän ja muistetaan seuraavalle kerralle
+- Etäisyys näkyy jokaisessa kohteessa
 - Jaettava linkki: sijainti ja hakusäde tallentuvat osoitteen loppuun
 
 **Kalalajit**
@@ -161,6 +164,7 @@ src/app.js            sovelluslogiikan kokoaminen ja tila
 src/sheet.js          mobiilin alapaneeli ja sen eleet
 src/map.js            Leaflet-kartta, merkinnät ja säde
 src/spots.js          Overpass-haku ja vesialueiden luokittelu
+src/spot-types.js     kohdetyyppien kategoriat, värit ja suodattimet
 src/species.js        kalalajitietokanta ja lajisovitus
 src/weather.js        Open-Meteo-haku ja normalisointi
 src/score.js          kalaonnen pisteytys ja parhaat jaksot

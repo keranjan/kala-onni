@@ -173,15 +173,22 @@ test('an entry written in an older shape is replaced, not trusted', async () => 
   assert.doesNotThrow(() => scoreHours(weather));
 });
 
-test('prune clears entries from earlier versions only', () => {
+test('prune clears stale cache entries and nothing else', () => {
   localStorage.clear();
-  localStorage.setItem('kalaonni:weather:61.50:23.76', '{}');          // pre-version key
-  localStorage.setItem(weatherKey('61.50', '23.76'), '{}');            // current
+  localStorage.setItem('kalaonni:weather:61.50:23.76', '{}');          // pre-version cache
+  localStorage.setItem('kalaonni:spots:61.500:23.761:10', '{}');       // pre-version cache
+  localStorage.setItem(weatherKey('61.50', '23.76'), '{}');            // current cache
+  localStorage.setItem('kalaonni:theme', 'dark');                      // a preference
+  localStorage.setItem('kalaonni:filters', '["jarvi"]');               // a preference
   localStorage.setItem('muu-sovellus:avain', '{}');                    // not ours
 
   const removed = cache.prune();
-  assert.equal(removed, 1);
+  assert.equal(removed, 2);
   assert.equal(localStorage.getItem('kalaonni:weather:61.50:23.76'), null);
+  assert.equal(localStorage.getItem('kalaonni:spots:61.500:23.761:10'), null);
   assert.ok(localStorage.getItem(weatherKey('61.50', '23.76')));
+  // Preferences are not cache: pruning them would silently reset the app.
+  assert.equal(localStorage.getItem('kalaonni:theme'), 'dark');
+  assert.equal(localStorage.getItem('kalaonni:filters'), '["jarvi"]');
   assert.ok(localStorage.getItem('muu-sovellus:avain'), 'other apps are left alone');
 });

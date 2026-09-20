@@ -15,7 +15,8 @@ import { fetchSpots } from './spots.js';
 import { fetchWeather } from './weather.js';
 import { scoreHours, upcomingHours, bestWindows } from './score.js';
 import { matchSpecies, getSpecies, GENERIC_PROFILE, WATER_TYPES } from './species.js';
-import { renderSpots, renderSpecies, renderWeather, renderSkeletons, toast } from './ui.js';
+import { categoryFor, countByCategory, SPOT_CATEGORIES } from './spot-types.js';
+import { renderSpots, renderSpecies, renderWeather, renderSkeletons, renderFilters, toast } from './ui.js';
 
 const CHART_HOURS = 48;
 
@@ -23,6 +24,7 @@ const state = {
   origin: { ...DEFAULT_LOCATION },
   radiusKm: 10,
   spots: [],
+  hiddenCategories: new Set(),
   spotsNotice: null,
   selectedSpot: null,
   speciesId: null,
@@ -48,6 +50,8 @@ const dom = {
   searchInput: $('#search-input'),
   searchResults: $('#search-results'),
   mapHint: $('#map-hint'),
+  mapFilters: $('#map-filters'),
+  panelFilters: $('#panel-filters'),
   panel: $('#panel'),
   sheetHandle: $('#sheet-handle'),
   locateFab: $('#locate-fab'),
@@ -77,6 +81,9 @@ const mapOffset = () => sheet.visibleHeight();
 /* ----------------------------------------------------------- derived state */
 
 const activeProfile = () => getSpecies(state.speciesId) || GENERIC_PROFILE;
+
+/** Spots left after the category filters. The map and the list show these. */
+const visibleSpots = () => state.spots.filter((spot) => !state.hiddenCategories.has(categoryFor(spot).id));
 const weatherPoint = () => state.selectedSpot || state.origin;
 
 const VAGUE_TYPES = ['tuntematon', 'kalapaikka'];
@@ -111,16 +118,60 @@ function renderPlaceBar() {
   dom.placeMeta.textContent = bits.join(' · ');
 }
 
+/** Both filter bars – the one on the map and the one in the panel. */
+function renderFilterBars() {
+  const counts = countByCategory(state.spots);
+  for (const container of [dom.mapFilters, dom.panelFilters]) {
+    renderFilters(container, {
+      counts,
+      hidden: state.hiddenCategories,
+      onToggle: toggleCategory,
+    });
+  }
+}
+
+function toggleCategory(id) {
+  if (state.hiddenCategories.has(id)) state.hiddenCategories.delete(id);
+  else state.hiddenCategories.add(id);
+  saveHiddenCategories();
+  showSpots(state.spots);
+}
+
+function clearCategoryFilters() {
+  state.hiddenCategories.clear();
+  saveHiddenCategories();
+  showSpots(state.spots);
+}
+
+function saveHiddenCategories() {
+  try {
+    localStorage.setItem('kalaonni:filters', JSON.stringify([...state.hiddenCategories]));
+  } catch { /* filters are a convenience, not state we must keep */ }
+}
+
+function loadHiddenCategories() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('kalaonni:filters') || '[]');
+    const known = new Set(SPOT_CATEGORIES.map((category) => category.id));
+    return new Set(stored.filter((id) => known.has(id)));
+  } catch {
+    return new Set();
+  }
+}
+
 function renderSpotsView() {
   renderSpots(dom.spotsList, {
-    spots: state.spots,
+    spots: visibleSpots(),
+    totalCount: state.spots.length,
     selectedId: state.selectedSpot?.id,
     error: state.spotsError,
     notice: state.spotsNotice,
     radiusKm: state.radiusKm,
     onSelect: (spot) => selectSpot(spot, { fly: true }),
     onRetry: () => loadSpots({ force: true }),
+    onClearFilters: clearCategoryFilters,
   });
+  renderFilterBars();
 }
 
 /**
@@ -216,12 +267,14 @@ function showSpots(spots) {
     if (fresh) state.selectedSpot = fresh;
   }
 
-  // A spot the user picked stays on the map even if a smaller radius would now
-  // exclude it – the whole panel is about that spot.
+  // The map and the list show what the category filters leave. A spot the
+  // user picked stays on the map regardless – whether a smaller radius or a
+  // filter would now exclude it – because the whole panel is about that spot.
   const selected = state.selectedSpot;
-  const onMap = selected && !spots.some((spot) => spot.id === selected.id)
-    ? [...spots, selected]
-    : spots;
+  const shown = visibleSpots();
+  const onMap = selected && !shown.some((spot) => spot.id === selected.id)
+    ? [...shown, selected]
+    : shown;
 
   mapView.setSpots(onMap, { onSelect: (spot) => selectSpot(spot, { fly: false, focusTab: true }) });
   if (selected) mapView.highlightSpot(selected.id);
@@ -536,6 +589,8 @@ async function boot() {
   } catch { /* ignore */ }
 
   cache.prune();          // drop entries written by an older version
+  state.hiddenCategories = loadHiddenCategories();
+  renderFilterBars();
   showTab('spots');
   updateConnectionState();
   registerServiceWorker();

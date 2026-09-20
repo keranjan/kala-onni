@@ -55,11 +55,7 @@
           <span aria-hidden="true">📍</span>
         </button>
       </div>
-      <div class="map-legend" aria-hidden="true">
-        <span><i class="dot dot-spot"></i> Kalapaikka</span>
-        <span><i class="dot dot-water"></i> Vesistö</span>
-        <span><i class="dot dot-me"></i> Sijaintisi</span>
-      </div>
+      <div class="map-filters filters" id="map-filters" role="group" aria-label="Suodata kalapaikat kartalla"></div>
     </section>
 
     <aside class="panel" id="panel">
@@ -90,6 +86,7 @@
             </select>
             <button type="button" class="btn btn-ghost" id="refresh-spots">Päivitä</button>
           </div>
+          <div class="filters panel-filters" id="panel-filters" role="group" aria-label="Suodata kalapaikat"></div>
           <div id="spots-list" class="list"></div>
         </section>
 

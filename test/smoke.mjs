@@ -196,7 +196,7 @@ async function mobileRun(browser) {
 
   // Every interactive control must be thumb-sized.
   const small = await page.evaluate(() => {
-    const selectors = '#locate-fab, .tab, .btn:not([hidden]), .card, #radius-select, .sheet-handle';
+    const selectors = '#locate-fab, .tab, .btn:not([hidden]), .card, #radius-select, .sheet-handle, .chip';
     return [...document.querySelectorAll(selectors)]
       .filter((node) => node.offsetParent !== null)
       .map((node) => ({ id: node.id || node.className, box: node.getBoundingClientRect() }))
@@ -373,6 +373,82 @@ async function radiusRaceRun(browser) {
   assert.equal(recreated.length, 0,
     `unchanged markers were rebuilt and blink: ${recreated.join(', ')}`);
   assert.equal(after.length, before.length, 'the same markers should be on the map');
+
+  await context.close();
+}
+
+/** Category filters: colour-coded spots the user can switch on and off. */
+async function filterRun(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 860 },
+    locale: 'fi-FI',
+    permissions: ['geolocation'],
+    geolocation: { latitude: HOME.lat, longitude: HOME.lon },
+    serviceWorkers: 'block',
+  });
+  const page = await context.newPage();
+  await stubNetwork(page);
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#spots-list .card');
+
+  // Chips appear in both places and agree with what is listed.
+  const chips = await page.$$eval('#panel-filters .chip', (nodes) => nodes.map((node) => ({
+    id: node.dataset.category,
+    count: Number(node.querySelector('.chip-count').textContent),
+    pressed: node.getAttribute('aria-pressed'),
+  })));
+  assert.ok(chips.length >= 3, `expected a chip per category present, got ${chips.length}`);
+  assert.ok(chips.every((chip) => chip.pressed === 'true'), 'everything is shown to begin with');
+  const listed = await page.$$eval('#spots-list .card', (nodes) => nodes.length);
+  assert.equal(chips.reduce((sum, chip) => sum + chip.count, 0), listed,
+    'the counts must add up to the list');
+  assert.equal(await page.locator('#map-filters .chip').count(), chips.length,
+    'the map carries the same filters');
+
+  // Spots are colour-coded by category, not all the same.
+  const pinCategories = await page.$$eval('.pin', (nodes) => nodes.map((n) => n.dataset.category));
+  assert.ok(new Set(pinCategories).size >= 3, `pins should be colour-coded, saw ${new Set(pinCategories).size} kinds`);
+  const pinColours = await page.$$eval('.pin', (nodes) =>
+    [...new Set(nodes.map((n) => getComputedStyle(n).backgroundColor))]);
+  assert.ok(pinColours.length >= 3, `expected distinct marker colours, got ${pinColours.join(', ')}`);
+
+  // Switching a category off removes exactly its spots, from both list and map.
+  const lakes = chips.find((chip) => chip.id === 'jarvi');
+  await page.click('#panel-filters .chip[data-category="jarvi"]');
+  await page.waitForTimeout(200);
+  const afterList = await page.$$eval('#spots-list .card', (nodes) => nodes.length);
+  assert.equal(afterList, listed - lakes.count, 'the list must drop exactly the hidden category');
+  assert.equal(await page.locator('.pin[data-category="jarvi"]').count(), 0, 'hidden spots must leave the map');
+  assert.equal(await page.getAttribute('#panel-filters .chip[data-category="jarvi"]', 'aria-pressed'), 'false');
+  assert.equal(await page.getAttribute('#map-filters .chip[data-category="jarvi"]', 'aria-pressed'), 'false',
+    'both filter bars show the same state');
+  assert.match(await page.textContent('#spots-list .note'), /Näytetään \d+ \/ \d+/);
+  await page.screenshot({ path: join(SHOTS, '7-suodattimet.png') });
+
+  // Preferences must not be swept away by the cache prune on startup.
+  const stored = await page.evaluate(() => ({
+    filters: localStorage.getItem('kalaonni:filters'),
+    theme: localStorage.getItem('kalaonni:theme'),
+  }));
+  assert.match(stored.filters || '', /jarvi/, 'the filter choice must be stored');
+
+  // The choice survives a reload.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector('#spots-list .card');
+  assert.equal(await page.getAttribute('#panel-filters .chip[data-category="jarvi"]', 'aria-pressed'), 'false',
+    'the filter choice must be remembered');
+
+  // Hiding everything explains itself and offers a way back.
+  for (const chip of chips) {
+    const selector = `#panel-filters .chip[data-category="${chip.id}"]`;
+    if (await page.getAttribute(selector, 'aria-pressed') === 'true') await page.click(selector);
+  }
+  await page.waitForTimeout(200);
+  assert.match(await page.textContent('#spots-list .empty'), /piilotettu suodattimilla/);
+  await page.click('#spots-list .empty .btn');
+  await page.waitForTimeout(200);
+  assert.equal(await page.$$eval('#spots-list .card', (nodes) => nodes.length), listed,
+    '"show everything" must bring every spot back');
 
   await context.close();
 }
@@ -599,6 +675,7 @@ async function run() {
 
     await context.close();
 
+    await filterRun(browser);
     await radiusRaceRun(browser);
     await checkPwaAssets();
     failures.push(...await mobileRun(browser));

@@ -115,7 +115,12 @@ export function debounce(fn, delay = 350) {
  * this makes every reader skip the old entries instead of choking on them.
  */
 export const CACHE_VERSION = 'v2';
-const CACHE_PREFIX = 'kalaonni:';
+/**
+ * Only these namespaces hold cached API payloads. Preferences live under the
+ * same "kalaonni:" prefix and must survive a prune.
+ */
+const CACHE_NAMESPACES = ['weather', 'spots'];
+const isCacheKey = (key) => CACHE_NAMESPACES.some((name) => key.startsWith(`kalaonni:${name}:`));
 
 /** localStorage-backed cache; silently degrades when storage is unavailable. */
 export const cache = {
@@ -158,7 +163,7 @@ export const cache = {
       const stale = [];
       for (let i = 0; i < localStorage.length; i += 1) {
         const key = localStorage.key(i);
-        if (key?.startsWith(CACHE_PREFIX) && !key.includes(`:${CACHE_VERSION}:`)) stale.push(key);
+        if (key && isCacheKey(key) && !key.includes(`:${CACHE_VERSION}:`)) stale.push(key);
       }
       for (const key of stale) localStorage.removeItem(key);
       return stale.length;

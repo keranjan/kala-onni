@@ -2,6 +2,7 @@
 
 import { el, formatDistance, formatNumber, windDirectionShort, monthName, shiftDateKey, formatDayLabel } from './util.js';
 import { WATER_TYPES } from './species.js';
+import { SPOT_CATEGORIES, categoryFor } from './spot-types.js';
 import { describeWeatherCode } from './weather.js';
 import { iconSvg } from './icons.js';
 import { verdictFor } from './score.js';
@@ -23,9 +24,42 @@ export function renderSkeletons(container, count = 4) {
   for (let i = 0; i < count; i += 1) container.append(el('div', { class: 'skeleton' }));
 }
 
+/* -------------------------------------------------------------- filters */
+
+/**
+ * One chip per spot category: its icon on the category colour, its name and
+ * how many spots it holds. Switching one off hides those spots from the map
+ * and the list without a new search.
+ */
+export function renderFilters(container, { counts, hidden, onToggle }) {
+  container.textContent = '';
+  const shown = SPOT_CATEGORIES.filter((category) => counts[category.id] > 0 || hidden.has(category.id));
+  container.hidden = shown.length === 0;
+  if (container.hidden) return;
+
+  for (const category of shown) {
+    const off = hidden.has(category.id);
+    container.append(el('button', {
+      class: 'chip',
+      type: 'button',
+      'aria-pressed': String(!off),
+      'aria-label': `${category.label}, ${counts[category.id]} kohdetta`,
+      title: category.description || category.label,
+      dataset: { category: category.id },
+      style: `--chip-color: var(--cat-${category.id})`,
+      onclick: () => onToggle(category.id),
+    },
+      el('span', { class: 'chip-mark', 'aria-hidden': 'true' }, category.icon),
+      el('span', { class: 'chip-label' }, category.short),
+      el('span', { class: 'chip-count' }, String(counts[category.id]))));
+  }
+}
+
 /* ---------------------------------------------------------------- spots */
 
-export function renderSpots(container, { spots, selectedId, error, notice, radiusKm, onSelect, onRetry }) {
+export function renderSpots(container, {
+  spots, totalCount = spots.length, selectedId, error, notice, radiusKm, onSelect, onRetry, onClearFilters,
+}) {
   container.textContent = '';
 
   const retryButton = () => el('button', {
@@ -37,6 +71,16 @@ export function renderSpots(container, { spots, selectedId, error, notice, radiu
 
   if (error) {
     container.append(el('div', { class: 'note' }, error, el('br'), retryButton()));
+    return;
+  }
+  if (!spots.length && totalCount > 0) {
+    container.append(el('div', { class: 'empty' },
+      `Kaikki ${totalCount} kohdetta on piilotettu suodattimilla.`,
+      el('br'),
+      el('button', {
+        class: 'btn btn-ghost', type: 'button', style: 'margin-top:10px',
+        onclick: () => onClearFilters?.(),
+      }, 'Näytä kaikki tyypit')));
     return;
   }
   if (!spots.length) {
@@ -53,11 +97,16 @@ export function renderSpots(container, { spots, selectedId, error, notice, radiu
   }
 
   const marked = spots.filter((s) => s.isFishingSpot).length;
+  const filtered = totalCount > spots.length;
   container.append(el('div', { class: 'note' },
-    `Löytyi ${spots.length} kohdetta – niistä ${marked} on OpenStreetMapiin merkittyjä kalastuspaikkoja. Valitse kohde nähdäksesi lajit ja kalasään.`));
+    filtered
+      ? `Näytetään ${spots.length} / ${totalCount} kohteesta – loput on piilotettu suodattimilla. `
+      : `Löytyi ${spots.length} kohdetta – niistä ${marked} on OpenStreetMapiin merkittyjä kalastuspaikkoja. `,
+    'Valitse kohde nähdäksesi lajit ja kalasään.'));
 
   for (const spot of spots) {
     const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
+    const category = categoryFor(spot);
     container.append(el('button', {
       class: 'card',
       type: 'button',
@@ -68,9 +117,20 @@ export function renderSpots(container, { spots, selectedId, error, notice, radiu
         el('span', { class: 'card-title' }, spot.name),
         el('span', { class: 'card-dist' }, formatDistance(spot.distanceKm))),
       el('div', { class: 'card-sub' },
-        el('span', { class: `badge ${spot.isFishingSpot ? 'badge-spot' : 'badge-water'}` },
-          el('i', { class: 'swatch' }), `${type.label}`),
-        ...spot.facilities.slice(0, 3).map((f) => el('span', { class: 'badge' }, f)),
+        // The coloured badge names the category, which is what the pin colour
+        // means; the water type is its own, plain badge.
+        el('span', {
+          class: 'badge',
+          style: `--chip-color: var(--cat-${category.id})`,
+          title: category.description || category.label,
+        }, el('i', { class: 'swatch' }), category.short),
+        // The water type is worth naming when it adds something the category
+        // does not: "Lampi" inside "Järvet", or the lake a marked pier sits on.
+        category.waterTypes?.[0] === spot.waterType ? null : el('span', { class: 'badge' }, type.label),
+        ...spot.facilities
+          .filter((facility) => facility !== 'Merkitty kalastuspaikka')
+          .slice(0, 2)
+          .map((facility) => el('span', { class: 'badge' }, facility)),
         spot.waterTypeSource ? el('span', { class: 'badge' }, `Vesistö: ${spot.waterTypeSource}`) : null),
     ));
   }

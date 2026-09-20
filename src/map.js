@@ -2,6 +2,7 @@
 
 import { TILE_URL, TILE_ATTRIBUTION } from './config.js';
 import { WATER_TYPES } from './species.js';
+import { categoryFor } from './spot-types.js';
 import { formatDistance } from './util.js';
 
 export function createMap(elementId, { onPick } = {}) {
@@ -69,15 +70,18 @@ export function createMap(elementId, { onPick } = {}) {
    * replacing the element for that would make the marker blink.
    */
   function iconHtmlFor(spot) {
+    const category = categoryFor(spot);
     const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
-    const glyph = spot.isFishingSpot ? '🎣' : type.icon;
+    // Colour by category, glyph by the exact water type where we know it, so
+    // the two channels carry different information.
+    const glyph = category.id === 'merkitty' ? category.icon : (type.icon || category.icon);
     const classes = [
       'pin',
-      spot.isFishingSpot ? 'pin-spot' : 'pin-water',
+      `pin-cat-${category.id}`,
       // Selection is part of what the pin draws, so it survives every update.
       spot.id === selectedId ? 'is-active' : '',
     ].filter(Boolean).join(' ');
-    return `<div class="${classes}" data-id="${spot.id}"><span>${glyph}</span></div>`;
+    return `<div class="${classes}" data-id="${spot.id}" data-category="${category.id}"><span>${glyph}</span></div>`;
   }
 
   const iconFor = (spot) => L.divIcon({
