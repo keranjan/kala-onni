@@ -3,6 +3,7 @@
 import { el, formatDistance, formatNumber, windDirectionShort, monthName, shiftDateKey, formatDayLabel } from './util.js';
 import { WATER_TYPES } from './species.js';
 import { describeWeatherCode } from './weather.js';
+import { iconSvg } from './icons.js';
 import { verdictFor } from './score.js';
 import { renderScoreChart, renderScoreTable } from './chart.js';
 
@@ -212,7 +213,7 @@ export function renderWeather(container, {
   const today = weather.days[0];
   const sun = sunSummary(weather, today);
   const moon = now.moon;
-  const [codeText, codeIcon] = describeWeatherCode(now.hour.code);
+  const conditions = describeWeatherCode(now.hour.code);
   const targetName = profile.name;
 
   // --- hero: the one number the view leads with -------------------------
@@ -232,16 +233,50 @@ export function renderWeather(container, {
 
   // --- condition tiles ---------------------------------------------------
   const pressureFactor = now.factors.find((f) => f.id === 'paine');
+  const rainChance = now.hour.precipProbability;
+
   container.append(el('div', { class: 'tiles' },
-    tile('Sää', `${codeIcon}`, codeText),
-    tile('Lämpötila', `${Math.round(now.hour.temp)} °C`, `tuntuu ${Math.round(now.hour.feelsLike)} °C`),
-    tile('Tuuli', `${formatNumber(now.hour.wind, 1)} m/s`, `${windDirectionShort(now.hour.windDir)} · puuskat ${formatNumber(now.hour.gust, 0)}`),
-    tile('Pilvisyys', `${Math.round(now.hour.cloud)} %`, `sade ${formatNumber(now.hour.precip, 1)} mm/h`),
-    tile('Ilmanpaine', `${Math.round(now.hour.pressure)}`, pressureTrendLabel(pressureFactor)),
-    tile('Auringonnousu', sun.sunrise.value, sun.sunrise.sub),
-    tile('Auringonlasku', sun.sunset.value, sun.sunset.sub),
-    tile('Päivän pituus', sun.length.value, sun.length.sub),
-    tile('Kuu', `${Math.round(moon.illumination * 100)} %`, moon.name),
+    tile({
+      icon: conditions.icon,
+      label: 'Sää',
+      value: conditions.text,
+      sub: rainChance === null ? `sade ${formatNumber(now.hour.precip, 1)} mm/h` : `sateen todennäköisyys ${rainChance} %`,
+      variant: 'text',
+    }),
+    tile({
+      icon: 'thermometer',
+      label: 'Lämpötila',
+      value: `${Math.round(now.hour.temp)} °C`,
+      sub: `tuntuu ${Math.round(now.hour.feelsLike)} °C`,
+    }),
+    tile({
+      icon: 'wind',
+      label: 'Tuuli',
+      value: `${formatNumber(now.hour.wind, 1)} m/s`,
+      sub: `${windDirectionShort(now.hour.windDir)} · puuskat ${formatNumber(now.hour.gust, 0)}`,
+    }),
+    tile({
+      icon: 'cloudCover',
+      label: 'Pilvisyys',
+      value: `${Math.round(now.hour.cloud)} %`,
+      sub: `sade ${formatNumber(now.hour.precip, 1)} mm/h`,
+    }),
+    tile({
+      icon: 'pressure',
+      label: 'Ilmanpaine',
+      value: `${Math.round(now.hour.pressure)}`,
+      sub: pressureTrendLabel(pressureFactor),
+    }),
+    tile({ icon: 'sunrise', label: 'Auringonnousu', value: sun.sunrise.value, sub: sun.sunrise.sub }),
+    tile({ icon: 'sunset', label: 'Auringonlasku', value: sun.sunset.value, sub: sun.sunset.sub }),
+    tile({ icon: 'daylength', label: 'Päivän pituus', value: sun.length.value, sub: sun.length.sub }),
+    tile({
+      icon: 'moon',
+      iconOptions: { phase: moon.phase },
+      label: 'Kuu',
+      value: `${Math.round(moon.illumination * 100)} %`,
+      sub: moon.name,
+    }),
   ));
 
   if (sun.tomorrow) {
@@ -403,10 +438,17 @@ function sunSummary(weather, day) {
   return { sunrise, sunset, length, tomorrow };
 }
 
-function tile(label, value, sub) {
+/**
+ * One weather figure. The icon repeats what the label says, so it is
+ * decorative; `variant: 'text'` lets a worded value wrap instead of being
+ * held on one line like a number.
+ */
+function tile({ icon, iconOptions, label, value, sub, variant }) {
   return el('div', { class: 'tile' },
-    el('div', { class: 'tile-label' }, label),
-    el('div', { class: 'tile-value' }, value),
+    el('div', { class: 'tile-label' },
+      icon ? el('span', { class: 'tile-icon', html: iconSvg(icon, iconOptions) }) : null,
+      el('span', {}, label)),
+    el('div', { class: `tile-value${variant === 'text' ? ' is-text' : ''}` }, value),
     el('div', { class: 'tile-sub' }, sub));
 }
 

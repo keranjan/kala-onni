@@ -514,6 +514,18 @@ async function run() {
     assert.match(await page.textContent('#view-weather .sun-line'),
       /Huomenna aurinko nousee \d\d\.\d\d ja laskee \d\d\.\d\d/);
 
+    // Every weather figure carries its own icon, drawn in the theme's ink.
+    const tileIcons = await page.$$eval('#view-weather .tile', (nodes) => nodes.map((node) => ({
+      label: node.querySelector('.tile-label span:last-child').textContent,
+      svg: node.querySelector('.tile-icon svg') ? node.querySelector('.tile-icon').innerHTML.length : 0,
+      strokes: node.querySelectorAll('.tile-icon svg [stroke="currentColor"], .tile-icon svg[stroke="currentColor"]').length,
+    })));
+    assert.equal(tileIcons.length, 9, `expected nine weather tiles, got ${tileIcons.length}`);
+    for (const tile of tileIcons) {
+      assert.ok(tile.svg > 0, `the "${tile.label}" tile has no icon`);
+      assert.ok(tile.strokes > 0, `the "${tile.label}" icon does not follow the theme colour`);
+    }
+
     // --- the verdict speaks like an angler -------------------------------
     const verdict = await page.textContent('#view-weather .hero-verdict');
     assert.match(verdict, /siimoja$/, `unexpected verdict wording: ${verdict}`);

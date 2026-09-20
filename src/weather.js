@@ -19,39 +19,44 @@ const HOURLY_FIELDS = [
 
 const DAILY_FIELDS = ['weather_code', 'temperature_2m_max', 'temperature_2m_min', 'sunrise', 'sunset'];
 
-/** WMO weather codes in Finnish, with a glyph for compact display. */
+import { weatherIconName } from './icons.js';
+
+/** WMO weather codes in Finnish. */
 const WEATHER_CODES = {
-  0: ['Selkeää', '☀️'],
-  1: ['Enimmäkseen selkeää', '🌤️'],
-  2: ['Puolipilvistä', '⛅'],
-  3: ['Pilvistä', '☁️'],
-  45: ['Sumua', '🌫️'],
-  48: ['Huurresumua', '🌫️'],
-  51: ['Tihkusadetta', '🌦️'],
-  53: ['Tihkusadetta', '🌦️'],
-  55: ['Voimakasta tihkua', '🌦️'],
-  56: ['Jäätävää tihkua', '🌧️'],
-  57: ['Jäätävää tihkua', '🌧️'],
-  61: ['Heikkoa sadetta', '🌦️'],
-  63: ['Sadetta', '🌧️'],
-  65: ['Voimakasta sadetta', '🌧️'],
-  66: ['Jäätävää sadetta', '🌧️'],
-  67: ['Jäätävää sadetta', '🌧️'],
-  71: ['Heikkoa lumisadetta', '🌨️'],
-  73: ['Lumisadetta', '🌨️'],
-  75: ['Voimakasta lumisadetta', '❄️'],
-  77: ['Lumijyväsiä', '🌨️'],
-  80: ['Sadekuuroja', '🌦️'],
-  81: ['Sadekuuroja', '🌧️'],
-  82: ['Rajuja sadekuuroja', '⛈️'],
-  85: ['Lumikuuroja', '🌨️'],
-  86: ['Lumikuuroja', '❄️'],
-  95: ['Ukkosta', '⛈️'],
-  96: ['Ukkosta ja rakeita', '⛈️'],
-  99: ['Rajua ukkosta', '⛈️'],
+  0: 'Selkeää',
+  1: 'Enimmäkseen selkeää',
+  2: 'Puolipilvistä',
+  3: 'Pilvistä',
+  45: 'Sumua',
+  48: 'Huurresumua',
+  51: 'Tihkusadetta',
+  53: 'Tihkusadetta',
+  55: 'Voimakasta tihkua',
+  56: 'Jäätävää tihkua',
+  57: 'Jäätävää tihkua',
+  61: 'Heikkoa sadetta',
+  63: 'Sadetta',
+  65: 'Voimakasta sadetta',
+  66: 'Jäätävää sadetta',
+  67: 'Jäätävää sadetta',
+  71: 'Heikkoa lumisadetta',
+  73: 'Lumisadetta',
+  75: 'Voimakasta lumisadetta',
+  77: 'Lumijyväsiä',
+  80: 'Sadekuuroja',
+  81: 'Sadekuuroja',
+  82: 'Rajuja sadekuuroja',
+  85: 'Lumikuuroja',
+  86: 'Lumikuuroja',
+  95: 'Ukkosta',
+  96: 'Ukkosta ja rakeita',
+  99: 'Rajua ukkosta',
 };
 
-export const describeWeatherCode = (code) => WEATHER_CODES[code] || ['Vaihtelevaa', '🌥️'];
+export const describeWeatherCode = (code) => ({
+  text: WEATHER_CODES[code] || 'Vaihtelevaa',
+  icon: weatherIconName(code),
+});
 
 /**
  * Fetch and normalise the forecast for a coordinate.

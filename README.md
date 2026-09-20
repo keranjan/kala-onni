@@ -56,6 +56,9 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
   ilmanpaine ja sen muutos sekä kuun vaihe
 - Auringonnousu ja -lasku omina tietoinaan kellonaikoineen, päivän pituus ja
   huomisen ajat – pohjoisessa kerrotaan myös yötön yö ja kaamos
+- Jokaisella sääruudulla oma ikoninsa: sää säätilan mukaan, lämpömittari,
+  tuuli, pilvisyys, ilmanpainemittari, auringonnousu ja -lasku, päivän pituus
+  ja kuu, joka piirtyy sen hetkisen vaiheen mukaan
 - Arvio annetaan kalastajan kielellä: **äärimmäisen kireitä siimoja**,
   kireitä, löysähköjä, löysiä ja erittäin löysiä siimoja
 - Vaalea ja tumma teema, näppäimistökäyttö ja taulukkonäkymä kuvaajan rinnalla
@@ -162,6 +165,7 @@ src/species.js        kalalajitietokanta ja lajisovitus
 src/weather.js        Open-Meteo-haku ja normalisointi
 src/score.js          kalaonnen pisteytys ja parhaat jaksot
 src/chart.js          tuntikuvaaja (SVG) ja taulukkonäkymä
+src/icons.js          sääikonit inline-SVG:nä, kuu oikeassa vaiheessa
 src/ui.js             paneelinäkymien renderöinti
 src/geo.js            paikannus ja paikkahaku
 src/util.js           apufunktiot
