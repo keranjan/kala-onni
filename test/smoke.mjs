@@ -493,6 +493,33 @@ async function run() {
     const heroScore = Number(await page.textContent('#view-weather .hero-value'));
     assert.ok(heroScore >= 0 && heroScore <= 100, `hero score out of range: ${heroScore}`);
 
+    // --- sun times are stated outright, not hidden in a subtitle ---------
+    const tiles = await page.$$eval('#view-weather .tile', (nodes) => Object.fromEntries(
+      nodes.map((node) => [
+        node.querySelector('.tile-label').textContent,
+        `${node.querySelector('.tile-value').textContent}|${node.querySelector('.tile-sub').textContent}`,
+      ]),
+    ));
+    const [sunrise, sunriseSub] = (tiles['Auringonnousu'] || '').split('|');
+    const [sunset, sunsetSub] = (tiles['Auringonlasku'] || '').split('|');
+    const [dayLength] = (tiles['Päivän pituus'] || '').split('|');
+    assert.equal(sunrise, '06.55', `sunrise tile shows ${sunrise}`);
+    assert.equal(sunset, '19.52', `sunset tile shows ${sunset}`);
+    assert.equal(dayLength, '12 t 57 min', `day length shows ${dayLength}`);
+    // Tense has to match: "nousi 3 t sitten", never "nousee 3 t sitten".
+    assert.match(sunriseSub, /^(nousee .* päästä|nousi .* sitten)$/,
+      `sunrise subtitle reads "${sunriseSub}"`);
+    assert.match(sunsetSub, /^(laskee .* päästä|laski .* sitten)$/,
+      `sunset subtitle reads "${sunsetSub}"`);
+    assert.match(await page.textContent('#view-weather .sun-line'),
+      /Huomenna aurinko nousee \d\d\.\d\d ja laskee \d\d\.\d\d/);
+
+    // --- the verdict speaks like an angler -------------------------------
+    const verdict = await page.textContent('#view-weather .hero-verdict');
+    assert.match(verdict, /siimoja$/, `unexpected verdict wording: ${verdict}`);
+    const readout = await page.textContent('#view-weather .chart-readout');
+    assert.match(readout, /siimoja/, 'the chart readout must use the same wording');
+
     const columns = await page.$$eval('#view-weather .chart-wrap path[data-index]', (nodes) => nodes.length);
     assert.equal(columns, 48, `expected 48 hourly columns, got ${columns}`);
 
@@ -518,6 +545,8 @@ async function run() {
     await page.click('#view-weather .chart-foot .btn');
     const rows = await page.$$eval('#view-weather table.data tbody tr', (nodes) => nodes.length);
     assert.equal(rows, 48, `expected 48 table rows, got ${rows}`);
+    const firstVerdict = await page.textContent('#view-weather table.data tbody tr td:nth-child(3)');
+    assert.match(firstVerdict, /(kireä|löysä)/, `the table needs the short form, got "${firstVerdict}"`);
 
     // --- the two numbers are different things, and both are labelled -----
     await page.click('#tab-species');

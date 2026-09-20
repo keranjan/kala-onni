@@ -73,9 +73,39 @@ test('moon phase stays in range and flags new and full moon', () => {
   assert.ok(phases.some((p) => p.bonus === 0));
 });
 
-test('verdict thresholds are monotonic', () => {
-  const labels = [10, 40, 55, 70, 90].map((s) => verdictFor(s).label);
-  assert.deepEqual(labels, ['Huono', 'Heikko', 'Kohtalainen', 'Hyvä', 'Erinomainen']);
+test('the verdict scale reads as tight or slack lines, in order', () => {
+  const labels = [10, 40, 55, 70, 90].map((score) => verdictFor(score).label);
+  assert.deepEqual(labels, [
+    'Erittäin löysiä siimoja',
+    'Löysiä siimoja',
+    'Löysähköjä siimoja',
+    'Kireitä siimoja',
+    'Äärimmäisen kireitä siimoja',
+  ]);
+
+  // Every step also has a short form for tables and tooltips.
+  for (const score of [0, 34, 50, 64, 78, 100]) {
+    const verdict = verdictFor(score);
+    assert.ok(verdict.short && verdict.short.length < verdict.label.length);
+    assert.ok(/siima|kireä|löysä/.test(`${verdict.label} ${verdict.short}`.toLowerCase()));
+  }
+});
+
+test('a day with no sunrise or sunset does not break the scoring', () => {
+  const payload = makeWeatherPayload({ startDate: '2026-06-21' });
+  // Polar day: the API leaves the times out entirely.
+  payload.daily.sunrise = payload.daily.time.map(() => null);
+  payload.daily.sunset = payload.daily.time.map(() => null);
+  payload.hourly.is_day = payload.hourly.is_day.map(() => 1);
+
+  const polar = normaliseWeather(payload);
+  assert.equal(polar.days[0].sunrise, null);
+  assert.equal(polar.days[0].sunset, null);
+
+  const scored = scoreHours(polar);
+  assert.equal(scored.length, 72);
+  assert.ok(scored.every((entry) => entry.score >= 0 && entry.score <= 100));
+  assert.ok(scored.every((entry) => entry.daypart === 'paiva'), 'polar day is daytime throughout');
 });
 
 test('species matching respects habitat, latitude and closed seasons', () => {

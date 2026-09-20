@@ -55,8 +55,8 @@ export function moonPhase(dateMs = Date.now()) {
 
 /** Which part of the day an hour falls in, relative to sunrise and sunset. */
 export function daypart(hour, sunDay) {
-  const sunrise = sunDay?.sunrise?.instant;
-  const sunset = sunDay?.sunset?.instant;
+  const sunrise = sunDay?.sunrise?.instant ?? null;
+  const sunset = sunDay?.sunset?.instant ?? null;
 
   // Polar day / polar night, or a missing sun time: fall back to the API flag.
   if (!Number.isFinite(sunrise) || !Number.isFinite(sunset)) {
@@ -228,12 +228,19 @@ function temperatureFactor(hour, profile) {
   return { id: 'lampo', label: 'Lämpötila', delta, note: `${note} (${Math.round(temp)} °C)` };
 }
 
+/**
+ * The verdict is written the way an angler would say it, not as a grade.
+ * `short` is for the places where a full phrase does not fit – a table cell,
+ * a tooltip row.
+ */
 export function verdictFor(score) {
-  if (score >= 78) return { label: 'Erinomainen', tone: 'good' };
-  if (score >= 64) return { label: 'Hyvä', tone: 'good' };
-  if (score >= 50) return { label: 'Kohtalainen', tone: 'warning' };
-  if (score >= 34) return { label: 'Heikko', tone: 'serious' };
-  return { label: 'Huono', tone: 'critical' };
+  if (score >= 78) {
+    return { label: 'Äärimmäisen kireitä siimoja', short: 'äärimmäisen kireä', tone: 'good' };
+  }
+  if (score >= 64) return { label: 'Kireitä siimoja', short: 'kireä', tone: 'good' };
+  if (score >= 50) return { label: 'Löysähköjä siimoja', short: 'löysähkö', tone: 'warning' };
+  if (score >= 34) return { label: 'Löysiä siimoja', short: 'löysä', tone: 'serious' };
+  return { label: 'Erittäin löysiä siimoja', short: 'erittäin löysä', tone: 'critical' };
 }
 
 /**

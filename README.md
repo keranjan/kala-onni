@@ -53,7 +53,11 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 - Tuntikuvaaja, jossa yöajat on varjostettu ja paras jakso merkitty
 - Erittely siitä, mistä pisteet muodostuvat – jokainen tekijä nimettynä
 - Sään tunnusluvut: lämpötila, tuuli ja puuskat, pilvisyys, sade,
-  ilmanpaine ja sen muutos, auringonnousu ja -lasku sekä kuun vaihe
+  ilmanpaine ja sen muutos sekä kuun vaihe
+- Auringonnousu ja -lasku omina tietoinaan kellonaikoineen, päivän pituus ja
+  huomisen ajat – pohjoisessa kerrotaan myös yötön yö ja kaamos
+- Arvio annetaan kalastajan kielellä: **äärimmäisen kireitä siimoja**,
+  kireitä, löysähköjä, löysiä ja erittäin löysiä siimoja
 - Vaalea ja tumma teema, näppäimistökäyttö ja taulukkonäkymä kuvaajan rinnalla
 
 ## Käynnistys
@@ -106,6 +110,10 @@ pehmennetään, jotta huippuhetket erottuvat toisistaan.
 | Sade | Kevyt sade aktivoi, kaatosade heikentää |
 | Lämpötila | Verrataan lajin ihannelämpötilaan (ilman lämpötila veden korvikkeena) |
 | Kuun vaihe | Uusi- ja täysikuu antavat solunar-teorian mukaisen lisän |
+
+Pisteet näytetään sanallisena arviona: 78–100 äärimmäisen kireitä siimoja,
+64–77 kireitä, 50–63 löysähköjä, 34–49 löysiä ja alle 34 erittäin löysiä
+siimoja.
 
 Valittu kohdelaji muuttaa painotuksia: made pisteyttää yöt korkealle, ahven
 päivän, kuha hämärän ja tuulisen sään, taimen pilvisen ja sateisen kelin.

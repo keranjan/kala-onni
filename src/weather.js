@@ -109,10 +109,14 @@ export function normaliseWeather(raw) {
     isDay: h.is_day[i] === 1,
   }));
 
+  // Above the Arctic Circle the sun does not always rise or set; the API then
+  // leaves the time out, and everything downstream has to cope with null.
+  const sunTime = (iso) => (iso ? parseApiTime(iso, offset) : null);
+
   const days = raw.daily.time.map((iso, i) => ({
     dateKey: iso,
-    sunrise: parseApiTime(raw.daily.sunrise[i], offset),
-    sunset: parseApiTime(raw.daily.sunset[i], offset),
+    sunrise: sunTime(raw.daily.sunrise?.[i]),
+    sunset: sunTime(raw.daily.sunset?.[i]),
     tempMax: raw.daily.temperature_2m_max[i],
     tempMin: raw.daily.temperature_2m_min[i],
     code: raw.daily.weather_code[i],

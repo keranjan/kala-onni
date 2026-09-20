@@ -210,6 +210,7 @@ export function renderWeather(container, {
 
   const now = scored[0];
   const today = weather.days[0];
+  const sun = sunSummary(weather, today);
   const moon = now.moon;
   const [codeText, codeIcon] = describeWeatherCode(now.hour.code);
   const targetName = profile.name;
@@ -222,8 +223,8 @@ export function renderWeather(container, {
     el('div', { class: 'hero-label' }, `Kalaonni juuri nyt · ${targetName}${spot ? ` · ${spot.name}` : ''}`),
     el('div', { class: 'hero-row' },
       el('span', { class: 'hero-value' }, String(now.score)),
-      el('span', { class: 'hero-unit' }, '/ 100'),
-      el('span', { class: 'hero-verdict' }, now.verdict.label)),
+      el('span', { class: 'hero-unit' }, '/ 100')),
+    el('div', { class: 'hero-verdict' }, now.verdict.label),
     el('p', { class: 'hero-why' },
       positives.length ? `Puolesta: ${positives.join('; ')}. ` : '',
       negatives.length ? `Vastaan: ${negatives.join('; ')}.` : ''),
@@ -237,9 +238,15 @@ export function renderWeather(container, {
     tile('Tuuli', `${formatNumber(now.hour.wind, 1)} m/s`, `${windDirectionShort(now.hour.windDir)} · puuskat ${formatNumber(now.hour.gust, 0)}`),
     tile('Pilvisyys', `${Math.round(now.hour.cloud)} %`, `sade ${formatNumber(now.hour.precip, 1)} mm/h`),
     tile('Ilmanpaine', `${Math.round(now.hour.pressure)}`, pressureTrendLabel(pressureFactor)),
-    tile('Aurinko', `${today.sunrise.clock}`, `laskee ${today.sunset.clock}`),
+    tile('Auringonnousu', sun.sunrise.value, sun.sunrise.sub),
+    tile('Auringonlasku', sun.sunset.value, sun.sunset.sub),
+    tile('Päivän pituus', sun.length.value, sun.length.sub),
     tile('Kuu', `${Math.round(moon.illumination * 100)} %`, moon.name),
   ));
+
+  if (sun.tomorrow) {
+    container.append(el('p', { class: 'sun-line' }, sun.tomorrow));
+  }
 
   // --- best windows ------------------------------------------------------
   container.append(el('h2', { class: 'section-title' }, 'Parhaat kalastusajat',
@@ -328,6 +335,72 @@ export function renderWeather(container, {
     'Laji vaikuttaa painotuksiin. Malli on kalastajan nyrkkisääntö, ei tieteellinen ennuste – ja järvi tuntee oman vetensä paremmin kuin mikään sovellus.'));
 
   return { updateFactors };
+}
+
+/** Human-readable time difference, e.g. "2 t 10 min". */
+function formatDuration(ms) {
+  const minutes = Math.max(0, Math.round(ms / 60000));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  if (rest === 0) return `${hours} t`;
+  return `${hours} t ${rest} min`;
+}
+
+/**
+ * Sunrise, sunset and day length for the tiles.
+ * North of the Arctic Circle the sun may not rise or set at all, in which case
+ * the API leaves the time out and we say which of the two it is.
+ */
+function sunSummary(weather, day) {
+  const nowMs = Date.now();
+  const polar = (() => {
+    const hours = weather.hours.filter((hour) => hour.time.dateKey === day.dateKey);
+    if (!hours.length) return null;
+    if (hours.every((hour) => hour.isDay)) return 'yoton';
+    if (hours.every((hour) => !hour.isDay)) return 'kaamos';
+    return null;
+  })();
+
+  const describe = (time, { future, past }) => {
+    if (!time) {
+      return {
+        value: '–',
+        sub: polar === 'yoton' ? 'yötön yö – aurinko ei laske'
+          : polar === 'kaamos' ? 'kaamos – aurinko ei nouse'
+            : 'ei tiedossa',
+      };
+    }
+    const delta = time.instant - nowMs;
+    const sub = delta >= 0
+      ? `${future} ${formatDuration(delta)} päästä`
+      : `${past} ${formatDuration(-delta)} sitten`;
+    return { value: time.clock, sub };
+  };
+
+  const sunrise = describe(day.sunrise, { future: 'nousee', past: 'nousi' });
+  const sunset = describe(day.sunset, { future: 'laskee', past: 'laski' });
+
+  let length = { value: '–', sub: polar === 'yoton' ? '24 t valoisaa' : polar === 'kaamos' ? 'ei valoisaa aikaa' : 'ei tiedossa' };
+  if (day.sunrise && day.sunset) {
+    const lengthMs = day.sunset.instant - day.sunrise.instant;
+    let sub = 'auringonnoususta laskuun';
+    const next = weather.days[1];
+    if (next?.sunrise && next?.sunset) {
+      const diffMin = Math.round(((next.sunset.instant - next.sunrise.instant) - lengthMs) / 60000);
+      if (diffMin !== 0) {
+        sub = `huomenna ${Math.abs(diffMin)} min ${diffMin < 0 ? 'lyhyempi' : 'pidempi'}`;
+      }
+    }
+    length = { value: formatDuration(lengthMs), sub };
+  }
+
+  const next = weather.days[1];
+  const tomorrow = next?.sunrise && next?.sunset
+    ? `Huomenna aurinko nousee ${next.sunrise.clock} ja laskee ${next.sunset.clock}.`
+    : null;
+
+  return { sunrise, sunset, length, tomorrow };
 }
 
 function tile(label, value, sub) {
