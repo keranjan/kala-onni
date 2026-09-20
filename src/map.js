@@ -21,6 +21,7 @@ export function createMap(elementId, { onPick } = {}) {
   let accuracyCircle = null;
   let radiusCircle = null;
   const markersById = new Map();
+  let selectedId = null;
 
   map.on('click', (event) => {
     onPick?.({ lat: event.latlng.lat, lon: event.latlng.lng });
@@ -70,7 +71,13 @@ export function createMap(elementId, { onPick } = {}) {
   function iconHtmlFor(spot) {
     const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
     const glyph = spot.isFishingSpot ? '🎣' : type.icon;
-    return `<div class="pin ${spot.isFishingSpot ? 'pin-spot' : 'pin-water'}" data-id="${spot.id}"><span>${glyph}</span></div>`;
+    const classes = [
+      'pin',
+      spot.isFishingSpot ? 'pin-spot' : 'pin-water',
+      // Selection is part of what the pin draws, so it survives every update.
+      spot.id === selectedId ? 'is-active' : '',
+    ].filter(Boolean).join(' ');
+    return `<div class="${classes}" data-id="${spot.id}"><span>${glyph}</span></div>`;
   }
 
   const iconFor = (spot) => L.divIcon({
@@ -140,11 +147,22 @@ export function createMap(elementId, { onPick } = {}) {
     }
   }
 
+  /** Mark one spot as the selected one and redraw only the pins that change. */
   function highlightSpot(spotId, { openPopup = false } = {}) {
-    for (const [id, marker] of markersById) {
-      const pin = marker.getElement()?.querySelector('.pin');
-      pin?.classList.toggle('is-active', id === spotId);
+    const previousId = selectedId;
+    selectedId = spotId;
+
+    for (const id of [previousId, spotId]) {
+      const marker = id && markersById.get(id);
+      if (!marker?.spotData) continue;
+      const html = iconHtmlFor(marker.spotData);
+      if (marker.iconHtml !== html) {
+        marker.setIcon(iconFor(marker.spotData));
+        marker.iconHtml = html;
+      }
+      marker.setZIndexOffset(id === spotId ? 1000 : 0);
     }
+
     const marker = markersById.get(spotId);
     if (marker && openPopup) marker.openPopup();
     return marker;

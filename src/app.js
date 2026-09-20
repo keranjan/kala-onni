@@ -79,10 +79,19 @@ const mapOffset = () => sheet.visibleHeight();
 const activeProfile = () => getSpecies(state.speciesId) || GENERIC_PROFILE;
 const weatherPoint = () => state.selectedSpot || state.origin;
 
+const VAGUE_TYPES = ['tuntematon', 'kalapaikka'];
+
+/**
+ * The water type the species list is built from. A marked fishing spot often
+ * carries no water tags of its own, so fall back to the nearest classified
+ * water rather than treating "unknown" as an answer.
+ */
 function currentWaterType() {
-  if (state.selectedSpot) return state.selectedSpot.waterType;
-  // No spot picked yet: describe the nearest water we know about.
-  const nearest = state.spots.find((spot) => spot.waterType !== 'tuntematon');
+  const selected = state.selectedSpot;
+  if (selected && !VAGUE_TYPES.includes(selected.waterType)) return selected.waterType;
+
+  const nearest = state.spots.find((spot) => !VAGUE_TYPES.includes(spot.waterType));
+  if (selected) return selected.waterType;        // keep it honest: unknown stays unknown
   return nearest?.waterType || 'tuntematon';
 }
 
@@ -143,6 +152,11 @@ function renderSpeciesView() {
     spot: state.selectedSpot,
     species,
     month: new Date().getMonth() + 1,
+    waterInfo: {
+      type: currentWaterType(),
+      source: state.selectedSpot?.waterTypeSource || null,
+      guess: Boolean(state.selectedSpot?.waterTypeGuess),
+    },
     selectedSpeciesId: state.speciesId,
     onSelect: selectSpecies,
     scoreForSpecies: currentScoreForSpecies,
@@ -193,6 +207,14 @@ function spotsNoticeFor(result) {
 
 function showSpots(spots) {
   state.spots = spots;
+
+  // Re-point the selection at the fresh object. The first, fast half of the
+  // search cannot know which lake a pier belongs to; the full result can, and
+  // holding on to the older copy froze the species estimate at its vaguest.
+  if (state.selectedSpot) {
+    const fresh = spots.find((spot) => spot.id === state.selectedSpot.id);
+    if (fresh) state.selectedSpot = fresh;
+  }
 
   // A spot the user picked stays on the map even if a smaller radius would now
   // exclude it – the whole panel is about that spot.
@@ -302,7 +324,7 @@ async function setOrigin({ lat, lon, accuracy = null }, { label = null, lookUpNa
 function selectSpot(spot, { fly = true, focusTab = false } = {}) {
   state.selectedSpot = spot;
   state.selectedHour = 0;
-  mapView.highlightSpot(spot.id, { openPopup: !fly });
+  mapView.highlightSpot(spot.id, { openPopup: true });
   if (fly) mapView.flyTo(spot.lat, spot.lon, 13, { offsetY: mapOffset() });
   sheet.expand();
   renderPlaceBar();

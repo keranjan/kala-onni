@@ -32,7 +32,7 @@ export const SPECIES = [
     abundance: 1,
     name: 'Ahven',
     latin: 'Perca fluviatilis',
-    waters: ['jarvi', 'lampi', 'tekojarvi', 'joki', 'kanava', 'meri', 'kalapaikka'],
+    waters: ['jarvi', 'lampi', 'tekojarvi', 'joki', 'kanava', 'meri'],
     latRange: [59.5, 70.2],
     activeMonths: ALL_MONTHS,
     peakMonths: [6, 7, 8, 9, 10],
@@ -49,7 +49,7 @@ export const SPECIES = [
     abundance: 0.95,
     name: 'Hauki',
     latin: 'Esox lucius',
-    waters: ['jarvi', 'lampi', 'tekojarvi', 'joki', 'kanava', 'meri', 'kalapaikka'],
+    waters: ['jarvi', 'lampi', 'tekojarvi', 'joki', 'kanava', 'meri'],
     latRange: [59.5, 70.2],
     activeMonths: ALL_MONTHS,
     peakMonths: [5, 6, 9, 10, 11],
@@ -67,7 +67,7 @@ export const SPECIES = [
     abundance: 0.68,
     name: 'Kuha',
     latin: 'Sander lucioperca',
-    waters: ['jarvi', 'tekojarvi', 'joki', 'meri', 'kalapaikka'],
+    waters: ['jarvi', 'tekojarvi', 'joki', 'meri'],
     latRange: [59.5, 65.5],
     activeMonths: [4, 5, 6, 7, 8, 9, 10, 11, 12],
     peakMonths: [6, 7, 8, 9],
@@ -85,7 +85,7 @@ export const SPECIES = [
     abundance: 0.42,
     name: 'Taimen',
     latin: 'Salmo trutta',
-    waters: ['joki', 'puro', 'jarvi', 'meri', 'kalapaikka'],
+    waters: ['joki', 'puro', 'jarvi', 'meri'],
     latRange: [59.5, 70.2],
     activeMonths: [1, 2, 3, 4, 5, 6, 7, 8, 12],
     peakMonths: [5, 6, 8],
@@ -105,7 +105,7 @@ export const SPECIES = [
     abundance: 0.34,
     name: 'Kirjolohi',
     latin: 'Oncorhynchus mykiss',
-    waters: ['lampi', 'jarvi', 'joki', 'kalapaikka', 'tekojarvi'],
+    waters: ['lampi', 'jarvi', 'joki', 'tekojarvi'],
     latRange: [59.5, 70.2],
     activeMonths: ALL_MONTHS,
     peakMonths: [4, 5, 9, 10, 11],
@@ -367,13 +367,42 @@ export function matchSpecies({ waterType = 'tuntematon', lat = 62, month = new D
       Math.min(97, Math.round(100 * species.abundance * habitatFactor * latFactor * seasonFactor * legalFactor)),
     );
 
+    const waterLabel = (WATER_TYPES[waterType] || WATER_TYPES.tuntematon).label.toLowerCase();
+
+    // Say in plain words where the number came from, in the order it was built.
+    const reasons = [
+      species.abundance >= 0.8
+        ? { label: 'Yleisyys', detail: 'hyvin yleinen laji Suomessa', good: true }
+        : species.abundance >= 0.5
+          ? { label: 'Yleisyys', detail: 'kohtalaisen yleinen laji', good: true }
+          : { label: 'Yleisyys', detail: 'harvalukuisempi laji', good: false },
+      vague
+        ? { label: 'Vesityyppi', detail: 'ei tiedossa – arvio on varovainen', good: false }
+        : habitatMatch
+          ? { label: 'Vesityyppi', detail: `${waterLabel} sopii lajille`, good: true }
+          : { label: 'Vesityyppi', detail: `${waterLabel} ei ole lajin tyypillinen vesi`, good: false },
+      inLatRange
+        ? { label: 'Levinneisyys', detail: 'esiintyy tällä leveysasteella', good: true }
+        : { label: 'Levinneisyys', detail: 'levinneisyysalueen reunalla', good: false },
+      isPeak
+        ? { label: 'Vuodenaika', detail: 'tämä kuukausi on lajin parasta aikaa', good: true }
+        : inSeason
+          ? { label: 'Vuodenaika', detail: 'laji on kaudessa', good: true }
+          : { label: 'Vuodenaika', detail: 'hiljaista aikaa vuodesta', good: false },
+    ];
+    if (isClosed) {
+      reasons.push({ label: 'Rauhoitus', detail: 'laji on nyt rauhoitettu', good: false });
+    }
+
     results.push({
       ...species,
       likelihood,
       habitatMatch,
+      habitatKnown: !vague,
       inSeason,
       isPeak,
       isClosed,
+      reasons,
       seasonLabel: isClosed ? 'Rauhoitusaika' : isPeak ? 'Parasta aikaa' : inSeason ? 'Kaudessa' : 'Hiljaista aikaa',
     });
   }

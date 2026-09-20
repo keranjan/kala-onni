@@ -27,6 +27,10 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 - Kaksi eri lukua, kumpikin nimettynä: **esiintyminen** (%) kertoo, onko laji
   tässä vedessä nyt – vesityypin, leveysasteen ja kuukauden perusteella –
   ja **kalaonni** (0–100) kertoo, onko juuri nyt hyvä hetki sen pyyntiin
+- Jokainen kortti avaa pyynnöstä erittelyn “Miksi esiintyminen on X %?”, ja
+  paneeli selittää molemmat luvut omassa osiossaan
+- Jos vesityyppiä ei saada selville, se sanotaan suoraan ja arviot pidetään
+  varovaisina – arvio tarkentuu itsestään, kun vesistöhaku valmistuu
 - Jokaisesta lajista pyyntitavat, parhaat vuorokaudenajat, paikkavinkit sekä
   alamitta ja rauhoitusaika, kun sellainen on
 - Lajin valinta painottaa kalasään uudelleen juuri sille lajille

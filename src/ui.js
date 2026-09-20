@@ -78,25 +78,44 @@ export function renderSpots(container, { spots, selectedId, error, notice, radiu
 /* -------------------------------------------------------------- species */
 
 export function renderSpecies(introContainer, listContainer, {
-  spot, species, month, selectedSpeciesId, onSelect, scoreForSpecies,
+  spot, species, month, waterInfo, selectedSpeciesId, onSelect, scoreForSpecies,
 }) {
   introContainer.textContent = '';
   listContainer.textContent = '';
 
-  const where = spot ? spot.name : 'valitulla alueella';
-  const type = spot ? (WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon).label.toLowerCase() : 'vesialue';
+  const where = spot ? spot.name : 'Valittu alue';
+  const type = WATER_TYPES[waterInfo?.type] || WATER_TYPES.tuntematon;
+  const vague = ['tuntematon', 'kalapaikka'].includes(waterInfo?.type);
+
+  let typeLine = `${type.label} · ${monthName(month - 1)}`;
+  if (waterInfo?.source) {
+    typeLine += waterInfo.guess
+      ? ` · vesityyppi arvattu lähimmästä vesistöstä (${waterInfo.source})`
+      : ` · vesityyppi lähimmästä vesistöstä (${waterInfo.source})`;
+  }
 
   introContainer.append(
     el('div', {},
-      el('strong', {}, `${where} – ${type}, ${monthName(month - 1)}`),
-      el('br'),
-      el('strong', {}, 'Esiintyminen'),
-      ' kertoo, kuinka todennäköisesti laji ylipäätään on tässä vedessä nyt – se perustuu ',
-      'vesityyppiin, leveysasteeseen ja vuodenaikaan. ',
-      el('strong', {}, 'Kalaonni'),
-      ' taas kertoo, kuinka hyvä hetki juuri nyt on sen lajin pyyntiin. ',
-      'Kala voi siis esiintyä heikosti mutta olla parhaassa syöntivireessä – tai päinvastoin. ',
-      'Valitse laji, niin kalasää ja parhaat ajat lasketaan sen mukaan.'),
+      el('div', {}, el('strong', {}, where)),
+      el('div', { style: 'color: var(--text-muted); margin-top:2px' }, typeLine),
+      vague
+        ? el('p', { class: 'warn-line' },
+            '⚠️ Vesityyppiä ei saatu selville, joten esiintymisarviot ovat varovaisia. ',
+            'Valitse listalta järvi tai joki, niin arvio tarkentuu.')
+        : null,
+      el('details', { class: 'explainer' },
+        el('summary', {}, 'Mitä nämä luvut tarkoittavat?'),
+        el('dl', {},
+          el('dt', {}, 'Esiintyminen (%)'),
+          el('dd', {}, 'Onko laji ylipäätään tässä vedessä juuri nyt. Perustuu lajin yleisyyteen, ',
+            'vesityyppiin, leveysasteeseen ja kuukauteen. Ei liity säähän.'),
+          el('dt', {}, 'Kalaonni (0–100)'),
+          el('dd', {}, 'Onko juuri nyt hyvä hetki tämän lajin pyyntiin. Perustuu säähän: ',
+            'vuorokaudenaika, tuuli, ilmanpaine, pilvisyys, sade, lämpötila ja kuun vaihe.')),
+        el('p', { style: 'margin:8px 0 0' },
+          'Luvut ovat toisistaan riippumattomia: kala voi esiintyä heikosti mutta olla ',
+          'parhaassa syöntivireessä – tai päinvastoin. Kummatkin ovat arvioita, eivät lupauksia.')),
+    ),
   );
 
   if (!species.length) {
@@ -107,13 +126,11 @@ export function renderSpecies(introContainer, listContainer, {
   for (const fish of species) {
     const selected = fish.id === selectedSpeciesId;
     const seasonBadgeClass = fish.isClosed ? 'badge badge-crit' : fish.isPeak ? 'badge badge-good' : 'badge';
-
     const nowScore = scoreForSpecies?.(fish.id) ?? null;
 
-    const card = el('button', {
-      class: 'card',
+    const main = el('button', {
+      class: 'card-main',
       type: 'button',
-      'aria-current': selected ? 'true' : 'false',
       onclick: () => onSelect(selected ? null : fish.id),
     },
       el('div', { class: 'species-head' },
@@ -126,7 +143,8 @@ export function renderSpecies(introContainer, listContainer, {
       nowScore === null ? null : el('div', { class: 'species-now' },
         'Kalaonni juuri nyt tälle lajille: ',
         el('b', {}, `${nowScore}/100`),
-        ' · ', verdictFor(nowScore).label),
+        ' · ', verdictFor(nowScore).label,
+        selected ? ' · kalasää laskettu tälle lajille' : ''),
       el('div', { class: 'card-sub' },
         el('span', { class: seasonBadgeClass }, fish.seasonLabel),
         fish.minSizeCm ? el('span', { class: 'badge' }, `Alamitta ${fish.minSizeCm} cm`) : null,
@@ -144,7 +162,20 @@ export function renderSpecies(introContainer, listContainer, {
           : null,
         fish.note ? el('p', { style: 'margin:6px 0 0; color: var(--text-muted)' }, fish.note) : null),
     );
-    listContainer.append(card);
+
+    // The breakdown lives outside the button: a <details> inside one would be
+    // unreachable, since the button would swallow the click.
+    const why = el('details', { class: 'why' },
+      el('summary', {}, `Miksi esiintyminen on ${fish.likelihood} %?`),
+      el('ul', { class: 'factors' }, fish.reasons.map((reason) => el('li', {},
+        el('span', { class: `sign ${reason.good ? 'pos' : 'neg'}` }, reason.good ? '+' : '−'),
+        el('span', {}, el('strong', {}, `${reason.label}: `), reason.detail)))),
+    );
+
+    listContainer.append(el('div', {
+      class: 'card species-card',
+      'aria-current': selected ? 'true' : 'false',
+    }, main, why));
   }
 
   listContainer.append(el('div', { class: 'note', style: 'margin-top:12px' },

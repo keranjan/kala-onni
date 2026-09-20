@@ -157,6 +157,8 @@ function dedupe(spots) {
  * which can sit far from the shore, so the radius is deliberately generous.
  */
 const INHERIT_RADIUS_KM = 3;
+/** Beyond the confident radius the nearest water is a guess, and says so. */
+const INHERIT_GUESS_RADIUS_KM = 8;
 function inheritWaterTypes(spots) {
   const classified = spots.filter((s) => !['tuntematon', 'kalapaikka'].includes(s.waterType));
   for (const spot of spots) {
@@ -170,9 +172,10 @@ function inheritWaterTypes(spots) {
         nearest = water;
       }
     }
-    if (nearest && nearestDistance <= INHERIT_RADIUS_KM) {
+    if (nearest && nearestDistance <= INHERIT_GUESS_RADIUS_KM) {
       spot.waterType = nearest.waterType;
       spot.waterTypeSource = nearest.name;
+      spot.waterTypeGuess = nearestDistance > INHERIT_RADIUS_KM;
     }
   }
   return spots;

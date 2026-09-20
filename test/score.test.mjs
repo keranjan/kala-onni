@@ -105,3 +105,34 @@ test('generic profile is used when no species is given', () => {
   const b = scoreHours(weather, GENERIC_PROFILE);
   assert.deepEqual(a.map((e) => e.score), b.map((e) => e.score));
 });
+
+test('an unknown water type lowers every estimate the same way, and says so', () => {
+  const lake = matchSpecies({ waterType: 'jarvi', lat: 61.5, month: 7 });
+  const unknown = matchSpecies({ waterType: 'tuntematon', lat: 61.5, month: 7 });
+  const marked = matchSpecies({ waterType: 'kalapaikka', lat: 61.5, month: 7 });
+
+  const perchIn = (list) => list.find((s) => s.id === 'ahven').likelihood;
+  assert.ok(perchIn(unknown) < perchIn(lake), 'an unknown water cannot be as certain as a known one');
+  assert.equal(perchIn(marked), perchIn(unknown),
+    'a marked fishing spot says nothing about the water, so it scores like any unknown');
+
+  const known = lake.find((s) => s.id === 'ahven');
+  const vague = unknown.find((s) => s.id === 'ahven');
+  assert.equal(known.habitatKnown, true);
+  assert.equal(vague.habitatKnown, false);
+  assert.match(vague.reasons.find((r) => r.label === 'Vesityyppi').detail, /ei tiedossa/);
+  assert.match(known.reasons.find((r) => r.label === 'Vesityyppi').detail, /järvi/);
+});
+
+test('every species explains its own estimate', () => {
+  for (const fish of matchSpecies({ waterType: 'joki', lat: 62, month: 10 })) {
+    assert.ok(fish.reasons.length >= 4, `${fish.name} has no breakdown`);
+    for (const reason of fish.reasons) {
+      assert.ok(reason.label && reason.detail, `${fish.name} has an empty reason`);
+      assert.equal(typeof reason.good, 'boolean');
+    }
+    if (fish.isClosed) {
+      assert.ok(fish.reasons.some((r) => r.label === 'Rauhoitus'), `${fish.name} hides its closed season`);
+    }
+  }
+});

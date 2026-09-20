@@ -68,8 +68,9 @@ async function stubNetwork(page, { failWaterQuery = false, slowWideSearchMs = 0 
     if (failWaterQuery && part === 'water') {
       return route.fulfill({ status: 504, contentType: 'text/plain', body: 'gateway timeout' });
     }
-    // A wide search can be the slow one, the way a big Overpass query is.
-    if (slowWideSearchMs && radiusKm >= 10) {
+    // Only the heavy half of a wide search is slow – that is the whole point
+    // of splitting it, and the fast half must stay fast.
+    if (slowWideSearchMs && part === 'water' && radiusKm >= 10) {
       await new Promise((resolve) => setTimeout(resolve, slowWideSearchMs));
     }
     return route.fulfill(json(makeOverpassPayload({ ...HOME, part, radiusKm })));
@@ -287,8 +288,46 @@ async function radiusRaceRun(browser) {
     serviceWorkers: 'block',
   });
   const page = await context.newPage();
-  await stubNetwork(page, { slowWideSearchMs: 1500 });
+  // Long enough that the "water type still unknown" phase is observable.
+  await stubNetwork(page, { slowWideSearchMs: 4000 });
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
+
+  // --- a spot picked before the water search lands must catch up ---------
+  // The pier has no water tags of its own, so until the lakes arrive its type
+  // is unknown and the estimate is deliberately cautious. Once the water half
+  // lands the same selection must sharpen by itself.
+  await page.waitForSelector('#spots-list .card-title', { timeout: 20000 });
+  await page.locator('#spots-list .card').first().click();
+  await page.waitForSelector('#species-list .card', { timeout: 10000 });
+
+  const vagueWarning = await page.locator('#species-intro .warn-line').count();
+  const vagueLikelihood = Number((await page.textContent('#species-list .figure-value')).replace(/\D/g, ''));
+  assert.equal(vagueWarning, 1, 'an unknown water type must be called out, not hidden');
+
+  await page.waitForFunction(() =>
+    document.querySelector('#species-intro').textContent.includes('Järvi'),
+    null, { timeout: 20000 });
+  const sharpLikelihood = Number((await page.textContent('#species-list .figure-value')).replace(/\D/g, ''));
+  assert.ok(sharpLikelihood > vagueLikelihood,
+    `the estimate must sharpen once the water type is known (${vagueLikelihood} → ${sharpLikelihood})`);
+  assert.equal(await page.locator('#species-intro .warn-line').count(), 0,
+    'the warning must go away once the water type is known');
+
+  // --- the numbers explain themselves -----------------------------------
+  assert.ok(await page.locator('#species-intro details.explainer').isVisible(),
+    'the panel must explain what the two numbers mean');
+  const whySummary = await page.textContent('#species-list details.why summary');
+  assert.match(whySummary, /Miksi esiintyminen on \d+ %/);
+  await page.locator('#species-list details.why summary').first().click();
+  const reasons = await page.$$eval('#species-list details.why .factors li', (nodes) => nodes.length);
+  assert.ok(reasons >= 4, `the breakdown must name every input, got ${reasons}`);
+
+  // --- the picked spot is marked on the map ------------------------------
+  const activeId = await page.getAttribute('.pin.is-active', 'data-id');
+  assert.ok(activeId, 'the selected spot must be highlighted on the map');
+
+  // Back to the spot list: picking a spot moved the panel to the species view.
+  await page.click('#tab-spots');
 
   // The 10 km search is slow and is the only one that reaches Kaukajärvi.
   await page.waitForSelector('#spots-list .card', { timeout: 20000 });
@@ -328,6 +367,8 @@ async function radiusRaceRun(browser) {
 
   const after = await page.$$eval('.pin', (nodes) =>
     nodes.map((n) => `${n.dataset.id}:${n.dataset.stamp || 'new'}`));
+  assert.ok(await page.locator('.pin.is-active').count() === 1,
+    'the highlight must survive a refresh of the markers');
   const recreated = after.filter((mark) => mark.endsWith(':new'));
   assert.equal(recreated.length, 0,
     `unchanged markers were rebuilt and blink: ${recreated.join(', ')}`);
@@ -492,7 +533,7 @@ async function run() {
     assert.match(cardScore, /^\d+\/100$/, 'the card must show the species kalaonni too');
 
     // Selecting that species must show exactly the same kalaonni in the hero.
-    const cards = await page.$$('#species-list .card');
+    const cards = await page.$$('#species-list .card-main');
     await cards[0].click();
     await page.waitForSelector('#view-weather .hero-value');
     const speciesScore = Number(await page.textContent('#view-weather .hero-value'));
