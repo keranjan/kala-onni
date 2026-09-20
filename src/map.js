@@ -62,29 +62,79 @@ export function createMap(elementId, { onPick } = {}) {
     }).addTo(map);
   }
 
+  /**
+   * Compare what is actually drawn, not the underlying fields: a spot can
+   * learn which lake it belongs to without its pin looking any different, and
+   * replacing the element for that would make the marker blink.
+   */
+  function iconHtmlFor(spot) {
+    const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
+    const glyph = spot.isFishingSpot ? '🎣' : type.icon;
+    return `<div class="pin ${spot.isFishingSpot ? 'pin-spot' : 'pin-water'}" data-id="${spot.id}"><span>${glyph}</span></div>`;
+  }
+
+  const iconFor = (spot) => L.divIcon({
+    className: '',
+    html: iconHtmlFor(spot),
+    iconSize: [26, 26],
+    iconAnchor: [13, 26],
+    popupAnchor: [0, -24],
+  });
+
+  const popupFor = (spot) => {
+    const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
+    return `<b>${escapeForPopup(spot.name)}</b>${type.label} · ${formatDistance(spot.distanceKm)}`;
+  };
+
+  /**
+   * Reconcile the markers with the given spots: remove what is gone, add what
+   * is new, and leave untouched markers alone. Clearing and rebuilding the
+   * whole layer made every marker blink on each partial update.
+   */
   function setSpots(spots, { onSelect } = {}) {
-    spotLayer.clearLayers();
-    markersById.clear();
+    const wanted = new Map(spots.map((spot) => [spot.id, spot]));
+
+    for (const [id, marker] of markersById) {
+      if (!wanted.has(id)) {
+        spotLayer.removeLayer(marker);
+        markersById.delete(id);
+      }
+    }
 
     for (const spot of spots) {
+      const existing = markersById.get(spot.id);
+      if (existing) {
+        existing.spotData = spot;                       // keep the click payload fresh
+
+        const html = iconHtmlFor(spot);
+        if (existing.iconHtml !== html) {
+          existing.setIcon(iconFor(spot));              // this replaces the element
+          existing.iconHtml = html;
+        }
+        const popup = popupFor(spot);
+        if (existing.popupHtml !== popup) {
+          existing.setPopupContent(popup);
+          existing.popupHtml = popup;
+        }
+        if (existing.options.title !== spot.name) {
+          existing.options.title = spot.name;
+          existing.getElement()?.setAttribute('title', spot.name);
+        }
+        continue;
+      }
+
       const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
       const marker = L.marker([spot.lat, spot.lon], {
-        icon: L.divIcon({
-          className: '',
-          html: `<div class="pin ${spot.isFishingSpot ? 'pin-spot' : 'pin-water'}" data-id="${spot.id}"><span>${spot.isFishingSpot ? '🎣' : type.icon}</span></div>`,
-          iconSize: [26, 26],
-          iconAnchor: [13, 26],
-          popupAnchor: [0, -24],
-        }),
+        icon: iconFor(spot),
         title: spot.name,
         alt: `${spot.name}, ${type.label}`,
         riseOnHover: true,
       });
-
-      marker.bindPopup(
-        `<b>${escapeForPopup(spot.name)}</b>${type.label} · ${formatDistance(spot.distanceKm)}`,
-      );
-      marker.on('click', () => onSelect?.(spot));
+      marker.spotData = spot;
+      marker.iconHtml = iconHtmlFor(spot);
+      marker.popupHtml = popupFor(spot);
+      marker.bindPopup(marker.popupHtml);
+      marker.on('click', () => onSelect?.(marker.spotData));
       marker.addTo(spotLayer);
       markersById.set(spot.id, marker);
     }

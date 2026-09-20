@@ -24,7 +24,9 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 
 **Kalalajit**
 - 16 Suomen yleisintä saalislajia järvistä, joista ja mereltä
-- Lajiarvio perustuu vesityyppiin, sijainnin leveysasteeseen ja kuukauteen
+- Kaksi eri lukua, kumpikin nimettynä: **esiintyminen** (%) kertoo, onko laji
+  tässä vedessä nyt – vesityypin, leveysasteen ja kuukauden perusteella –
+  ja **kalaonni** (0–100) kertoo, onko juuri nyt hyvä hetki sen pyyntiin
 - Jokaisesta lajista pyyntitavat, parhaat vuorokaudenajat, paikkavinkit sekä
   alamitta ja rauhoitusaika, kun sellainen on
 - Lajin valinta painottaa kalasään uudelleen juuri sille lajille

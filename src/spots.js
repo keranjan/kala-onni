@@ -209,7 +209,7 @@ function describeFailure(error) {
  * Post one query, trying the mirrors in turn until the budget runs out.
  * Overpass is free and shared, so the mirrors are tried one at a time.
  */
-async function runQuery(query, { timeoutMs, deadline }) {
+async function runQuery(query, { timeoutMs, deadline, signal }) {
   let lastError = new Error('ei yhteyttä');
   // Start from a different mirror each time: it spreads the load across the
   // volunteer-run servers and keeps one busy mirror from always being first.
@@ -224,23 +224,25 @@ async function runQuery(query, { timeoutMs, deadline }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ data: query }),
+        signal,
       }, Math.min(timeoutMs, remaining));
       if (!response.ok) throw new Error(`Overpass ${response.status}`);
       return await response.json();
     } catch (error) {
       lastError = error;
+      if (signal?.aborted) break;      // the caller moved on; stop trying mirrors
     }
   }
   throw lastError;
 }
 
 /** One half of the search: cache, then network, then whatever the cache still holds. */
-async function loadHalf({ name, key, query, timeoutMs, deadline, ttlMs }) {
+async function loadHalf({ name, key, query, timeoutMs, deadline, ttlMs, signal }) {
   const fresh = cache.get(key, ttlMs);
   if (fresh) return { name, elements: fresh.elements || [], source: 'cache' };
 
   try {
-    const data = await runQuery(query, { timeoutMs, deadline });
+    const data = await runQuery(query, { timeoutMs, deadline, signal });
     cache.set(key, data);
     return { name, elements: data.elements || [], source: 'network' };
   } catch (error) {
@@ -262,7 +264,7 @@ async function loadHalf({ name, key, query, timeoutMs, deadline, ttlMs }) {
  *
  * @returns {Promise<{spots: Array, partial: boolean, stale: boolean, staleAgeMs: number|null, failures: string[]}>}
  */
-export async function fetchSpots(lat, lon, radiusKm, { onPartial } = {}) {
+export async function fetchSpots(lat, lon, radiusKm, { onPartial, signal } = {}) {
   const origin = { lat, lon };
   const radiusMeters = Math.round(radiusKm * 1000);
   const deadline = Date.now() + OVERPASS_TOTAL_BUDGET_MS;
@@ -277,6 +279,7 @@ export async function fetchSpots(lat, lon, radiusKm, { onPartial } = {}) {
     timeoutMs: OVERPASS_SPOT_TIMEOUT_MS,
     ttlMs: SPOTS_CACHE_TTL_MS,
     deadline,
+    signal,
   });
 
   const waterHalf = loadHalf({
@@ -286,12 +289,13 @@ export async function fetchSpots(lat, lon, radiusKm, { onPartial } = {}) {
     timeoutMs: OVERPASS_WATER_TIMEOUT_MS,
     ttlMs: SPOTS_CACHE_TTL_MS,
     deadline,
+    signal,
   });
 
   // Show the marked fishing spots the moment they arrive.
   if (onPartial) {
     spotHalf.then((half) => {
-      if (half.elements.length) {
+      if (half.elements.length && !signal?.aborted) {
         onPartial(parseOverpass({ elements: half.elements }, origin, radiusKm));
       }
     }).catch(() => { /* reported through the final result */ });

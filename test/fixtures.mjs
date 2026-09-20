@@ -6,8 +6,16 @@
 
 const HOURS = 72;
 
-/** Open-Meteo style forecast around a September low-pressure passage. */
-export function makeWeatherPayload({ lat = 61.4978, lon = 23.761, startDate = '2026-09-19' } = {}) {
+/**
+ * Open-Meteo style forecast around a low-pressure passage.
+ * The forecast starts today unless a date is given, so a browser run always
+ * has a full 48 hours ahead of it whatever day the test runs on.
+ */
+export function makeWeatherPayload({
+  lat = 61.4978,
+  lon = 23.761,
+  startDate = new Date().toISOString().slice(0, 10),
+} = {}) {
   const time = [];
   const temperature_2m = [];
   const apparent_temperature = [];
@@ -99,7 +107,7 @@ export function makeWeatherPayload({ lat = 61.4978, lon = 23.761, startDate = '2
  * first, named waters second – so the fixture can return either.
  * @param {{lat?:number, lon?:number, part?:'all'|'spots'|'water'}} options
  */
-export function makeOverpassPayload({ lat = 61.4978, lon = 23.761, part = 'all' } = {}) {
+export function makeOverpassPayload({ lat = 61.4978, lon = 23.761, part = 'all', radiusKm = 10 } = {}) {
   const water = [
       {
         type: 'way', id: 101, center: { lat: lat + 0.02, lon: lon + 0.015 },
@@ -114,6 +122,14 @@ export function makeOverpassPayload({ lat = 61.4978, lon = 23.761, part = 'all' 
         tags: { name: 'Iidesjärvi', natural: 'water', water: 'pond' },
       },
   ];
+
+  // Roughly 7.8 km out: only a wide search reaches it.
+  if (radiusKm >= 10) {
+    water.push({
+      type: 'way', id: 106, center: { lat: lat + 0.07, lon: lon + 0.02 },
+      tags: { name: 'Kaukajärvi', natural: 'water', water: 'lake' },
+    });
+  }
 
   const spots = [
     {
@@ -134,6 +150,12 @@ export function makeOverpassPayload({ lat = 61.4978, lon = 23.761, part = 'all' 
 /** Which half of the search a raw Overpass query string asks for. */
 export function overpassPartFor(query = '') {
   return query.includes('"leisure"="fishing"') ? 'spots' : 'water';
+}
+
+/** The radius, in km, a raw Overpass query asks about. */
+export function overpassRadiusFor(query = '') {
+  const match = query.match(/around:(\d+)/);
+  return match ? Number(match[1]) / 1000 : 10;
 }
 
 /** Nominatim style search answer. */

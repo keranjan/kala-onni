@@ -6,7 +6,8 @@ import { scoreHours, bestWindows, moonPhase, daypart, verdictFor } from '../src/
 import { matchSpecies, getSpecies, GENERIC_PROFILE } from '../src/species.js';
 import { makeWeatherPayload } from './fixtures.mjs';
 
-const weather = normaliseWeather(makeWeatherPayload());
+// Pinned to a fixed day: these assertions are about specific clock times.
+const weather = normaliseWeather(makeWeatherPayload({ startDate: '2026-09-19' }));
 
 test('forecast normalises into hours and days', () => {
   assert.equal(weather.hours.length, 72);

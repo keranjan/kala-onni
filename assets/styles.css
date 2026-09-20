@@ -297,6 +297,16 @@ body {
   display: grid; place-items: center; font-size: 15px;
   background: var(--accent-soft); color: var(--accent-ink);
 }
+.figure { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.figure-value { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.figure-label { font-size: 10px; color: var(--text-muted); letter-spacing: .02em; }
+
+.species-now {
+  margin-top: 8px; font-size: 12.5px; color: var(--text-secondary);
+  padding-top: 8px; border-top: 1px solid var(--grid);
+}
+.species-now b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
 .species-body { margin-top: 8px; font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); }
 .species-body dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
 .species-body dt { color: var(--text-muted); }

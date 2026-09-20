@@ -3,6 +3,7 @@
 import { el, formatDistance, formatNumber, windDirectionShort, monthName, shiftDateKey, formatDayLabel } from './util.js';
 import { WATER_TYPES } from './species.js';
 import { describeWeatherCode } from './weather.js';
+import { verdictFor } from './score.js';
 import { renderScoreChart, renderScoreTable } from './chart.js';
 
 let toastTimer = null;
@@ -76,7 +77,9 @@ export function renderSpots(container, { spots, selectedId, error, notice, radiu
 
 /* -------------------------------------------------------------- species */
 
-export function renderSpecies(introContainer, listContainer, { spot, species, month, selectedSpeciesId, onSelect }) {
+export function renderSpecies(introContainer, listContainer, {
+  spot, species, month, selectedSpeciesId, onSelect, scoreForSpecies,
+}) {
   introContainer.textContent = '';
   listContainer.textContent = '';
 
@@ -87,8 +90,13 @@ export function renderSpecies(introContainer, listContainer, { spot, species, mo
     el('div', {},
       el('strong', {}, `${where} – ${type}, ${monthName(month - 1)}`),
       el('br'),
-      'Arvio perustuu vesityyppiin, sijainnin leveysasteeseen ja vuodenaikaan. ',
-      'Valitse laji, niin kalasää ja parhaat ajat lasketaan juuri sen mukaan.'),
+      el('strong', {}, 'Esiintyminen'),
+      ' kertoo, kuinka todennäköisesti laji ylipäätään on tässä vedessä nyt – se perustuu ',
+      'vesityyppiin, leveysasteeseen ja vuodenaikaan. ',
+      el('strong', {}, 'Kalaonni'),
+      ' taas kertoo, kuinka hyvä hetki juuri nyt on sen lajin pyyntiin. ',
+      'Kala voi siis esiintyä heikosti mutta olla parhaassa syöntivireessä – tai päinvastoin. ',
+      'Valitse laji, niin kalasää ja parhaat ajat lasketaan sen mukaan.'),
   );
 
   if (!species.length) {
@@ -100,6 +108,8 @@ export function renderSpecies(introContainer, listContainer, { spot, species, mo
     const selected = fish.id === selectedSpeciesId;
     const seasonBadgeClass = fish.isClosed ? 'badge badge-crit' : fish.isPeak ? 'badge badge-good' : 'badge';
 
+    const nowScore = scoreForSpecies?.(fish.id) ?? null;
+
     const card = el('button', {
       class: 'card',
       type: 'button',
@@ -109,8 +119,14 @@ export function renderSpecies(introContainer, listContainer, { spot, species, mo
       el('div', { class: 'species-head' },
         el('span', { class: 'species-mark', 'aria-hidden': 'true' }, fish.name.slice(0, 1)),
         el('span', { class: 'card-title' }, fish.name, ' ', el('span', { class: 'latin' }, fish.latin)),
-        el('span', { class: 'card-dist' }, `${fish.likelihood} %`)),
+        el('span', { class: 'figure' },
+          el('span', { class: 'figure-value' }, `${fish.likelihood} %`),
+          el('span', { class: 'figure-label' }, 'esiintyminen'))),
       el('div', { class: 'meter', role: 'presentation' }, el('i', { style: `width:${fish.likelihood}%` })),
+      nowScore === null ? null : el('div', { class: 'species-now' },
+        'Kalaonni juuri nyt tälle lajille: ',
+        el('b', {}, `${nowScore}/100`),
+        ' · ', verdictFor(nowScore).label),
       el('div', { class: 'card-sub' },
         el('span', { class: seasonBadgeClass }, fish.seasonLabel),
         fish.minSizeCm ? el('span', { class: 'badge' }, `Alamitta ${fish.minSizeCm} cm`) : null,

@@ -114,6 +114,24 @@ function renderSpotsView() {
   });
 }
 
+/**
+ * The score the currently selected hour would have for one species. Cached per
+ * forecast, because the species list asks for every species on every render.
+ */
+const speciesScoreCache = new Map();
+
+function currentScoreForSpecies(speciesId) {
+  if (!state.weather) return null;
+  if (speciesScoreCache.has(speciesId)) return speciesScoreCache.get(speciesId);
+
+  const profile = getSpecies(speciesId) || GENERIC_PROFILE;
+  const all = scoreHours(state.weather, profile);
+  const upcoming = upcomingHours(all, state.weather.nowIso);
+  const score = (upcoming[0] ?? all[0])?.score ?? null;
+  speciesScoreCache.set(speciesId, score);
+  return score;
+}
+
 function renderSpeciesView() {
   const point = weatherPoint();
   const species = matchSpecies({
@@ -127,6 +145,7 @@ function renderSpeciesView() {
     month: new Date().getMonth() + 1,
     selectedSpeciesId: state.speciesId,
     onSelect: selectSpecies,
+    scoreForSpecies: currentScoreForSpecies,
   });
 }
 
@@ -174,35 +193,63 @@ function spotsNoticeFor(result) {
 
 function showSpots(spots) {
   state.spots = spots;
-  mapView.setSpots(spots, { onSelect: (spot) => selectSpot(spot, { fly: false, focusTab: true }) });
-  if (state.selectedSpot) mapView.highlightSpot(state.selectedSpot.id);
+
+  // A spot the user picked stays on the map even if a smaller radius would now
+  // exclude it – the whole panel is about that spot.
+  const selected = state.selectedSpot;
+  const onMap = selected && !spots.some((spot) => spot.id === selected.id)
+    ? [...spots, selected]
+    : spots;
+
+  mapView.setSpots(onMap, { onSelect: (spot) => selectSpot(spot, { fly: false, focusTab: true }) });
+  if (selected) mapView.highlightSpot(selected.id);
   renderSpotsView();
 }
 
+/**
+ * Only the newest search may touch the map. Changing the radius while one is
+ * in flight used to let the older, wider answer land afterwards and repaint
+ * spots from outside the new circle.
+ */
+let spotsRequestCounter = 0;
+let spotsInFlight = null;
+
 async function loadSpots() {
+  const requestId = ++spotsRequestCounter;
+  const isCurrent = () => requestId === spotsRequestCounter;
+
+  spotsInFlight?.abort();                       // stop the search we moved on from
+  const controller = new AbortController();
+  spotsInFlight = controller;
+
   state.spotsError = null;
   state.spotsNotice = null;
   renderSkeletons(dom.spotsList, 5);
 
-  let paintedEarly = false;
   try {
     const result = await fetchSpots(state.origin.lat, state.origin.lon, state.radiusKm, {
-      // Marked fishing spots arrive first; show them while the water search runs.
+      signal: controller.signal,
+      // The fast half is a first-paint accelerator: show it while the water
+      // search runs, but never in place of spots that are already on screen –
+      // replacing them and putting them back is what makes the map blink.
       onPartial: (spots) => {
-        paintedEarly = true;
-        showSpots(spots);
+        if (isCurrent() && !state.spots.length) showSpots(spots);
       },
     });
+    if (!isCurrent()) return;
     state.spotsNotice = spotsNoticeFor(result);
     showSpots(result.spots);
-    if (paintedEarly && result.spots.length > state.spots.length) renderSpotsView();
   } catch (error) {
+    if (!isCurrent() || controller.signal.aborted) return;
     state.spots = [];
     state.spotsError = error.message;
-    mapView.setSpots([]);
-    renderSpotsView();
+    showSpots([]);
     toast('Kalapaikkojen haku ei onnistunut.', { error: true });
+  } finally {
+    if (isCurrent()) spotsInFlight = null;
   }
+
+  if (!isCurrent()) return;
   renderSpeciesView();
   setTimeout(dismissMapHint, 6000);
 }
@@ -213,8 +260,10 @@ async function loadWeather() {
   renderSkeletons(dom.weather, 3);
   try {
     state.weather = await fetchWeather(point.lat, point.lon);
+    speciesScoreCache.clear();
     recomputeScores();
     renderWeatherView();
+    renderSpeciesView();
   } catch (error) {
     dom.weather.textContent = '';
     dom.weather.append(Object.assign(document.createElement('div'), {
@@ -329,6 +378,11 @@ dom.locateFab.addEventListener('click', runLocate);
 
 dom.radius.addEventListener('change', () => {
   state.radiusKm = Number(dom.radius.value);
+  // Drop what no longer fits right away, so the map never shows a mix of the
+  // old and the new search area while the query runs.
+  if (state.spots.length) {
+    showSpots(state.spots.filter((spot) => spot.distanceKm <= state.radiusKm));
+  }
   mapView.setRadius({ ...state.origin, radiusKm: state.radiusKm });
   mapView.fitTo(state.origin.lat, state.origin.lon, state.radiusKm, { offsetY: mapOffset() });
   writeHash();

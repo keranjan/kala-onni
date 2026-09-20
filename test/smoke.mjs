@@ -14,7 +14,9 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 
 import { chromium } from 'playwright';
-import { makeWeatherPayload, makeOverpassPayload, makeGeocodePayload, overpassPartFor } from './fixtures.mjs';
+import {
+  makeWeatherPayload, makeOverpassPayload, makeGeocodePayload, overpassPartFor, overpassRadiusFor,
+} from './fixtures.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SHOTS = join(ROOT, 'test', 'screenshots');
@@ -50,7 +52,7 @@ function startServer() {
   return new Promise((resolve) => server.listen(PORT, () => resolve(server)));
 }
 
-async function stubNetwork(page, { failWaterQuery = false } = {}) {
+async function stubNetwork(page, { failWaterQuery = false, slowWideSearchMs = 0 } = {}) {
   const json = (body) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
   await page.route('**tile.openstreetmap.org/**', (route) =>
@@ -58,14 +60,19 @@ async function stubNetwork(page, { failWaterQuery = false } = {}) {
   await page.route('**api.open-meteo.com/**', (route) => route.fulfill(json(makeWeatherPayload(HOME))));
   // The app asks in two halves; answer each with its own slice, and optionally
   // let the heavy one fail the way a busy Overpass mirror does.
-  await page.route('**overpass**', (route) => {
+  await page.route('**overpass**', async (route) => {
     // The body is form-encoded; decode it before deciding which half this is.
     const query = new URLSearchParams(route.request().postData() || '').get('data') || '';
     const part = overpassPartFor(query);
+    const radiusKm = overpassRadiusFor(query);
     if (failWaterQuery && part === 'water') {
       return route.fulfill({ status: 504, contentType: 'text/plain', body: 'gateway timeout' });
     }
-    return route.fulfill(json(makeOverpassPayload({ ...HOME, part })));
+    // A wide search can be the slow one, the way a big Overpass query is.
+    if (slowWideSearchMs && radiusKm >= 10) {
+      await new Promise((resolve) => setTimeout(resolve, slowWideSearchMs));
+    }
+    return route.fulfill(json(makeOverpassPayload({ ...HOME, part, radiusKm })));
   });
   await page.route('**nominatim.openstreetmap.org/search**', (route) => route.fulfill(json(makeGeocodePayload())));
   await page.route('**nominatim.openstreetmap.org/reverse**', (route) =>
@@ -267,6 +274,68 @@ async function mobileRun(browser) {
   return problems;
 }
 
+/**
+ * Narrowing the radius while the wider search is still running must not let
+ * the late answer repaint spots from outside the new circle.
+ */
+async function radiusRaceRun(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 860 },
+    locale: 'fi-FI',
+    permissions: ['geolocation'],
+    geolocation: { latitude: HOME.lat, longitude: HOME.lon },
+    serviceWorkers: 'block',
+  });
+  const page = await context.newPage();
+  await stubNetwork(page, { slowWideSearchMs: 1500 });
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
+
+  // The 10 km search is slow and is the only one that reaches Kaukajärvi.
+  await page.waitForSelector('#spots-list .card', { timeout: 20000 });
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('#spots-list .card-title')].some((n) => n.textContent === 'Kaukajärvi'),
+    null, { timeout: 20000 });
+
+  // Narrow the search while a fresh wide query is in flight.
+  await page.selectOption('#radius-select', '5');
+  await page.waitForTimeout(3500);
+
+  const titles = await page.$$eval('#spots-list .card-title', (nodes) => nodes.map((n) => n.textContent));
+  assert.ok(!titles.includes('Kaukajärvi'),
+    `a spot outside the 5 km radius came back: ${titles.join(', ')}`);
+
+  const distances = await page.$$eval('#spots-list .card-dist', (nodes) =>
+    nodes.map((n) => n.textContent.trim()));
+  for (const distance of distances) {
+    const km = distance.endsWith('km') ? Number(distance.replace(/[^0-9,]/g, '').replace(',', '.')) : 0;
+    assert.ok(km <= 5, `list shows ${distance}, outside the chosen 5 km`);
+  }
+
+  const pinTitles = await page.$$eval('.leaflet-marker-icon', (nodes) =>
+    nodes.map((n) => n.getAttribute('title')));
+  assert.ok(!pinTitles.includes('Kaukajärvi'), 'a stale marker stayed on the map');
+
+  // Refreshing must reuse every marker that stays, not rebuild the layer.
+  const before = await page.evaluate(() => {
+    const pins = [...document.querySelectorAll('.pin')];
+    pins.forEach((pin) => { pin.dataset.stamp = 'kept'; });
+    return pins.map((pin) => pin.dataset.id);
+  });
+  assert.ok(before.length >= 3, 'need a few markers to test marker reuse');
+
+  await page.click('#refresh-spots');
+  await page.waitForTimeout(2000);
+
+  const after = await page.$$eval('.pin', (nodes) =>
+    nodes.map((n) => `${n.dataset.id}:${n.dataset.stamp || 'new'}`));
+  const recreated = after.filter((mark) => mark.endsWith(':new'));
+  assert.equal(recreated.length, 0,
+    `unchanged markers were rebuilt and blink: ${recreated.join(', ')}`);
+  assert.equal(after.length, before.length, 'the same markers should be on the map');
+
+  await context.close();
+}
+
 /** A busy Overpass must degrade to the fast half, not to an empty screen. */
 async function degradedRun(browser) {
   const context = await browser.newContext({
@@ -409,13 +478,28 @@ async function run() {
     const rows = await page.$$eval('#view-weather table.data tbody tr', (nodes) => nodes.length);
     assert.equal(rows, 48, `expected 48 table rows, got ${rows}`);
 
-    // --- target species re-scores the forecast ---------------------------
+    // --- the two numbers are different things, and both are labelled -----
     await page.click('#tab-species');
+    await page.waitForSelector('#species-list .card .species-now');
+
+    const label = await page.textContent('#species-list .card .figure-label');
+    assert.equal(label, 'esiintyminen', 'the percentage must say what it measures');
+
+    const likelihood = await page.textContent('#species-list .card .figure-value');
+    assert.match(likelihood, /^\d+ %$/);
+
+    const cardScore = await page.textContent('#species-list .card .species-now b');
+    assert.match(cardScore, /^\d+\/100$/, 'the card must show the species kalaonni too');
+
+    // Selecting that species must show exactly the same kalaonni in the hero.
     const cards = await page.$$('#species-list .card');
     await cards[0].click();
     await page.waitForSelector('#view-weather .hero-value');
     const speciesScore = Number(await page.textContent('#view-weather .hero-value'));
-    assert.ok(Number.isFinite(speciesScore));
+    assert.equal(speciesScore, Number(cardScore.split('/')[0]),
+      'the species card and the weather hero must agree on the score');
+    assert.notEqual(`${speciesScore}`, likelihood.replace(' %', ''),
+      'the two numbers are different measures; if they match the test is not proving anything');
 
     // --- dark mode and mobile layout ------------------------------------
     await page.emulateMedia({ colorScheme: 'dark' });
@@ -433,6 +517,7 @@ async function run() {
 
     await context.close();
 
+    await radiusRaceRun(browser);
     await checkPwaAssets();
     failures.push(...await mobileRun(browser));
     await degradedRun(browser);

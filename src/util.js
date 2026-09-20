@@ -168,13 +168,22 @@ export const cache = {
   },
 };
 
-/** fetch() with a timeout, so a stalled mirror cannot hang the UI. */
-export async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
+/**
+ * fetch() with a timeout, so a stalled mirror cannot hang the UI.
+ * An optional `signal` lets the caller cancel a request whose answer is no
+ * longer wanted – a search the user has already moved on from.
+ */
+export async function fetchWithTimeout(url, { signal, ...options } = {}, timeoutMs = 20000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const forward = () => controller.abort();
+  signal?.addEventListener('abort', forward, { once: true });
+  if (signal?.aborted) controller.abort();
+
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', forward);
   }
 }
