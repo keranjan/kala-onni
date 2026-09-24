@@ -58,7 +58,8 @@ export function renderFilters(container, { counts, hidden, onToggle }) {
 /* ---------------------------------------------------------------- spots */
 
 export function renderSpots(container, {
-  spots, totalCount = spots.length, selectedId, error, notice, radiusKm, onSelect, onRetry, onClearFilters,
+  spots, totalCount = spots.length, selectedId, error, notice, radiusKm,
+  onSelect, onRetry, onClearFilters, summaryFor,
 }) {
   container.textContent = '';
 
@@ -132,6 +133,12 @@ export function renderSpots(container, {
           .slice(0, 2)
           .map((facility) => el('span', { class: 'badge' }, facility)),
         spot.waterTypeSource ? el('span', { class: 'badge' }, `Vesistö: ${spot.waterTypeSource}`) : null),
+      // What your own log knows about this spot – the reason to come back.
+      (() => {
+        const summary = summaryFor?.(spot);
+        return summary ? el('div', { class: 'catch-hint' },
+          '🎣 Olet saanut täältä ', el('b', {}, `${summary.count}`), ' kalaa: ', summary.text) : null;
+      })(),
     ));
   }
 }
@@ -389,6 +396,7 @@ export function renderWeather(container, {
 
   container.append(el('div', { class: 'chart-foot' },
     el('span', { class: 'night-key' }, el('i', {}), 'Yöaika'),
+    el('span', {}, '▲ auringonnousu ▼ -lasku'),
     el('span', {}, 'Sininen viiva = paras jakso'),
     tableButton));
   container.append(tableHost);
@@ -413,9 +421,16 @@ export function renderWeather(container, {
     );
   };
 
+  // Only the sun events that fall inside the plotted window are of interest.
+  const sunEvents = weather.days.flatMap((day) => [
+    day.sunrise ? { kind: 'nousu', clock: day.sunrise.clock, instant: day.sunrise.instant } : null,
+    day.sunset ? { kind: 'lasku', clock: day.sunset.clock, instant: day.sunset.instant } : null,
+  ].filter(Boolean));
+
   renderScoreChart(chartCard, {
     scored,
     windows,
+    sunEvents,
     selectedIndex,
     onSelect: (index) => {
       updateFactors(index);

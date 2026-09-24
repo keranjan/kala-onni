@@ -30,6 +30,18 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 - Etäisyys näkyy jokaisessa kohteessa
 - Jaettava linkki: sijainti ja hakusäde tallentuvat osoitteen loppuun
 
+**Omat paikat ja saalispäiväkirja**
+- Tallenna oma apaja kartan keskipisteestä tai nykyisestä sijainnista – myös
+  sellainen, jota OpenStreetMap ei tunne. Omat paikat näkyvät hakutulosten
+  joukossa omalla tähtimerkillään ja omalla suodattimellaan
+- Kirjaa saalis kahdella napautuksella: laji, pituus ja pyyntitapa. Sää,
+  kalaonni ja vuorokaudenaika tallentuvat automaattisesti mukaan
+- Päiväkirja kertoo yhteenvedon: yleisin laji, paras vuorokaudenaika, suurin
+  kala ja paras paikka – ja kalapaikkalistassa näkyy “olet saanut täältä
+  ahventa ×3, useimmiten iltahämärässä”
+- Kaikki tallentuu vain laitteelle. Varmuuskopion voi viedä ja tuoda JSON-
+  tiedostona, eikä sitä koskaan siivota välimuistin mukana
+
 **Kalalajit**
 - 16 Suomen yleisintä saalislajia järvistä, joista ja mereltä
 - Kaksi eri lukua, kumpikin nimettynä: **esiintyminen** (%) kertoo, onko laji
@@ -58,7 +70,8 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 **Kalasää ja parhaat ajat**
 - Kalaonni-pisteet 0–100 jokaiselle tunnille seuraavan 48 tunnin ajalle
 - Kolme parasta kalastusjaksoa perusteluineen
-- Tuntikuvaaja, jossa yöajat on varjostettu ja paras jakso merkitty
+- Tuntikuvaaja, jossa yöajat on varjostettu, paras jakso merkitty ja
+  auringonnousu (▲) ja -lasku (▼) omalla merkillään akselin alla
 - Erittely siitä, mistä pisteet muodostuvat – jokainen tekijä nimettynä
 - Sään tunnusluvut: lämpötila, tuuli ja puuskat, pilvisyys, sade,
   ilmanpaine ja sen muutos sekä kuun vaihe
@@ -170,6 +183,9 @@ src/sheet.js          mobiilin alapaneeli ja sen eleet
 src/map.js            Leaflet-kartta, merkinnät ja säde
 src/spots.js          Overpass-haku ja vesialueiden luokittelu
 src/spot-types.js     kohdetyyppien kategoriat, värit ja suodattimet
+src/store.js          käyttäjän oman datan tallennus (ei koskaan välimuistia)
+src/logbook.js        omat paikat, saaliit ja niistä johdetut yhteenvedot
+src/journal-view.js   päiväkirjanäkymä sekä paikka- ja saalislomakkeet
 src/species.js        kalalajitietokanta ja lajisovitus
 src/weather.js        Open-Meteo-haku ja normalisointi
 src/score.js          kalaonnen pisteytys ja parhaat jaksot

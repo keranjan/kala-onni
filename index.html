@@ -70,12 +70,17 @@
       <div class="place-bar">
         <div class="place-name" id="place-name">Haetaan sijaintia…</div>
         <div class="place-meta" id="place-meta"></div>
+        <div class="place-actions">
+          <button type="button" class="btn btn-primary btn-small" id="log-catch">🎣 Kirjaa saalis</button>
+          <button type="button" class="btn btn-ghost btn-small" id="save-place" hidden>⭐ Tallenna omiin</button>
+        </div>
       </div>
 
       <div class="tabs" role="tablist" aria-label="Näkymät">
         <button role="tab" id="tab-spots" aria-controls="view-spots" aria-selected="true" class="tab">Paikat</button>
         <button role="tab" id="tab-species" aria-controls="view-species" aria-selected="false" class="tab" tabindex="-1">Kalat</button>
         <button role="tab" id="tab-weather" aria-controls="view-weather" aria-selected="false" class="tab" tabindex="-1">Kalasää</button>
+        <button role="tab" id="tab-journal" aria-controls="view-journal" aria-selected="false" class="tab" tabindex="-1">Päiväkirja</button>
       </div>
 
       <div class="views">
@@ -88,9 +93,11 @@
               <option value="25">25 km</option>
               <option value="50">50 km</option>
             </select>
+            <button type="button" class="btn btn-ghost btn-small" id="add-place">⭐ Oma paikka</button>
             <button type="button" class="btn btn-ghost" id="refresh-spots">Päivitä</button>
           </div>
           <div class="filters panel-filters" id="panel-filters" role="group" aria-label="Suodata kalapaikat"></div>
+          <div id="place-form"></div>
           <div id="spots-list" class="list"></div>
         </section>
 
@@ -101,6 +108,11 @@
 
         <section role="tabpanel" id="view-weather" aria-labelledby="tab-weather" class="view" hidden tabindex="0">
           <div id="weather-content"></div>
+        </section>
+
+        <section role="tabpanel" id="view-journal" aria-labelledby="tab-journal" class="view" hidden tabindex="0">
+          <div id="catch-form"></div>
+          <div id="journal-content"></div>
         </section>
       </div>
     </aside>

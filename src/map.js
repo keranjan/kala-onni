@@ -81,9 +81,10 @@ export function createMap(elementId, { onPick, onUserPan, onMoveEnd } = {}) {
   function iconHtmlFor(spot) {
     const category = categoryFor(spot);
     const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
-    // Colour by category, glyph by the exact water type where we know it, so
-    // the two channels carry different information.
-    const glyph = category.id === 'merkitty' ? category.icon : (type.icon || category.icon);
+    // Colour by category, glyph by the exact water type where the category is
+    // about the water. Categories that describe the spot itself – your own
+    // places, marked fishing spots – keep their own icon.
+    const glyph = category.waterTypes ? (type.icon || category.icon) : category.icon;
     const classes = [
       'pin',
       `pin-cat-${category.id}`,

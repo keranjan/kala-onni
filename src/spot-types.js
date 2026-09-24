@@ -14,6 +14,13 @@
 
 export const SPOT_CATEGORIES = [
   {
+    id: 'oma',
+    label: 'Omat paikat',
+    short: 'Omat',
+    icon: '⭐',
+    description: 'Itse tallentamasi paikat – ne näkyvät vain tällä laitteella',
+  },
+  {
     id: 'merkitty',
     label: 'Kalapaikat ja laiturit',
     short: 'Kalapaikat',
@@ -57,6 +64,7 @@ export const categoryById = (id) => BY_ID.get(id) || BY_ID.get('muu');
 /** Which category a spot belongs to. */
 export function categoryFor(spot) {
   if (!spot) return categoryById('muu');
+  if (spot.isOwnPlace) return categoryById('oma');
   if (spot.isFishingSpot || spot.facilities?.some((f) => f === 'Laituri' || f === 'Veneluiska')) {
     return categoryById('merkitty');
   }

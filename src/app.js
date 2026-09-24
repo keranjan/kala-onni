@@ -17,6 +17,12 @@ import { scoreHours, upcomingHours, bestWindows } from './score.js';
 import { matchSpecies, getSpecies, GENERIC_PROFILE, WATER_TYPES } from './species.js';
 import { categoryFor, countByCategory, SPOT_CATEGORIES } from './spot-types.js';
 import { renderSpots, renderSpecies, renderWeather, renderSkeletons, renderFilters, toast } from './ui.js';
+import {
+  listPlaces, addPlace, removePlace, placesAsSpots,
+  listCatches, addCatch, removeCatch, summaryForSpot, overallStats, STORE_NAMES,
+} from './logbook.js';
+import { exportAll, importAll } from './store.js';
+import { renderJournal, renderPlaceForm, renderCatchForm } from './journal-view.js';
 
 const CHART_HOURS = 48;
 
@@ -42,6 +48,12 @@ const dom = {
   placeName: $('#place-name'),
   placeMeta: $('#place-meta'),
   spotsList: $('#spots-list'),
+  journal: $('#journal-content'),
+  catchForm: $('#catch-form'),
+  placeForm: $('#place-form'),
+  logCatch: $('#log-catch'),
+  savePlace: $('#save-place'),
+  addPlace: $('#add-place'),
   speciesIntro: $('#species-intro'),
   speciesList: $('#species-list'),
   weather: $('#weather-content'),
@@ -96,6 +108,17 @@ const mapOffset = () => sheet.visibleHeight();
 
 const activeProfile = () => getSpecies(state.speciesId) || GENERIC_PROFILE;
 
+/**
+ * Own places are spots too: they sit among the search results, within the
+ * same radius, and are never overwritten by a new search.
+ */
+function withOwnPlaces(spots) {
+  const own = placesAsSpots(listPlaces(), measuringPoint())
+    .filter((place) => place.distanceKm <= state.radiusKm);
+  const ids = new Set(own.map((place) => place.id));
+  return [...own, ...spots.filter((spot) => !ids.has(spot.id))];
+}
+
 /** Spots left after the category filters. The map and the list show these. */
 const visibleSpots = () => state.spots.filter((spot) => !state.hiddenCategories.has(categoryFor(spot).id));
 const weatherPoint = () => state.selectedSpot || state.origin;
@@ -130,6 +153,7 @@ function renderPlaceBar() {
   }
   if (state.speciesId) bits.push(`kohdelaji: ${getSpecies(state.speciesId).name}`);
   dom.placeMeta.textContent = bits.join(' · ');
+  dom.savePlace.hidden = !spot || Boolean(spot.isOwnPlace);
 }
 
 /** Both filter bars – the one on the map and the one in the panel. */
@@ -184,6 +208,7 @@ function renderSpotsView() {
     onSelect: (spot) => selectSpot(spot, { fly: true }),
     onRetry: () => loadSpots({ force: true }),
     onClearFilters: clearCategoryFilters,
+    summaryFor: (spot) => summaryForSpot(spot),
   });
   renderFilterBars();
 }
@@ -277,7 +302,8 @@ function spotsNoticeFor(result) {
 
 function showSpots(spots) {
   // Measure from where the user is, not from where the search started.
-  state.spots = state.position ? recomputeDistances(spots, state.position) : spots;
+  const merged = withOwnPlaces(spots);
+  state.spots = state.position ? recomputeDistances(merged, state.position) : merged;
   spots = state.spots;
 
   // Re-point the selection at the fresh object. The first, fast half of the
@@ -557,11 +583,182 @@ document.addEventListener('visibilitychange', () => {
   else if (state.following) setWatching(true);
 });
 
+/* ------------------------------------------------- journal: places & catches */
+
+/** The weather a catch is logged in, kept with the entry. */
+function currentConditions() {
+  const entry = state.scored[state.selectedHour] || state.scored[0];
+  if (!entry) return null;
+  return {
+    score: entry.score,
+    verdict: entry.verdict.short,
+    daypart: entry.daypart,
+    temp: entry.hour.temp,
+    wind: entry.hour.wind,
+    windDir: entry.hour.windDir,
+    cloud: entry.hour.cloud,
+    pressure: entry.hour.pressure,
+    moon: entry.moon?.name || null,
+  };
+}
+
+/** Where a catch is being logged: the picked spot, or where the user stands. */
+function catchPlace() {
+  if (state.selectedSpot) return state.selectedSpot;
+  const point = state.position || state.origin;
+  return { id: null, name: state.origin.name || 'Nykyinen sijainti', lat: point.lat, lon: point.lon };
+}
+
+function renderJournalView() {
+  const places = listPlaces().map((place) => ({
+    ...place,
+    distanceKm: distanceKm(measuringPoint(), place),
+  })).sort((a, b) => a.distanceKm - b.distanceKm);
+
+  renderJournal(dom.journal, {
+    places,
+    catches: listCatches(),
+    stats: overallStats(),
+    position: state.position,
+    onStartCatch: startCatchForm,
+    onShowPlace: (place) => {
+      showTab('spots');
+      sheet.expand();
+      mapView.flyTo(place.lat, place.lon, 14, { offsetY: mapOffset() });
+      const spot = state.spots.find((candidate) => candidate.id === place.id);
+      if (spot) selectSpot(spot, { fly: false });
+    },
+    onRemovePlace: (place) => {
+      if (!window.confirm(`Poistetaanko paikka “${place.name}”?`)) return;
+      removePlace(place.id);
+      if (state.selectedSpot?.id === place.id) state.selectedSpot = null;
+      showSpots(state.spots.filter((spot) => spot.id !== place.id));
+      renderJournalView();
+      toast('Paikka poistettu.');
+    },
+    onRemoveCatch: (entry) => {
+      if (!window.confirm(`Poistetaanko ${entry.speciesName}?`)) return;
+      removeCatch(entry.id);
+      renderJournalView();
+      renderSpotsView();
+      toast('Saalis poistettu.');
+    },
+    onExport: exportBackup,
+    onImport: importBackup,
+  });
+}
+
+function startPlaceForm() {
+  const point = state.position && state.following ? state.position : mapView.getCenter();
+  showTab('spots');
+  sheet.expand();
+  renderPlaceForm(dom.placeForm, {
+    coords: {
+      lat: point.lat,
+      lon: point.lon,
+      source: state.position && state.following ? 'nykyinen sijaintisi' : 'kartan keskipiste',
+    },
+    onCancel: () => { dom.placeForm.textContent = ''; },
+    onSave: (values) => {
+      const { place, saved } = addPlace(values);
+      dom.placeForm.textContent = '';
+      if (!saved) {
+        toast('Paikkaa ei saatu tallennettua – selaimen tallennustila on täynnä tai estetty.', { error: true });
+        return;
+      }
+      showSpots(state.spots);
+      renderJournalView();
+      const spot = state.spots.find((candidate) => candidate.id === place.id);
+      if (spot) selectSpot(spot, { fly: false });
+      toast(`“${place.name}” tallennettu omiin paikkoihin.`);
+    },
+  });
+}
+
+/** Save a spot found on the map as one of your own. */
+function saveSelectedAsPlace() {
+  const spot = state.selectedSpot;
+  if (!spot || spot.isOwnPlace) return;
+  const { place, saved } = addPlace({
+    name: spot.name,
+    lat: spot.lat,
+    lon: spot.lon,
+    waterType: spot.waterType,
+    note: '',
+  });
+  if (!saved) {
+    toast('Paikkaa ei saatu tallennettua.', { error: true });
+    return;
+  }
+  showSpots(state.spots);
+  renderJournalView();
+  toast(`“${place.name}” tallennettu omiin paikkoihin.`);
+}
+
+function startCatchForm() {
+  const place = catchPlace();
+  showTab('journal');
+  sheet.expand();
+  const month = new Date().getMonth() + 1;
+  renderCatchForm(dom.catchForm, {
+    place,
+    species: matchSpecies({ waterType: currentWaterType(), lat: measuringPoint().lat, month }),
+    defaultSpeciesId: state.speciesId,
+    conditions: currentConditions(),
+    onCancel: () => { dom.catchForm.textContent = ''; },
+    onSave: (values) => {
+      const { entry, saved } = addCatch({ ...values, place, conditions: currentConditions() });
+      dom.catchForm.textContent = '';
+      if (!saved) {
+        toast('Saalista ei saatu tallennettua – selaimen tallennustila on täynnä tai estetty.', { error: true });
+        return;
+      }
+      renderJournalView();
+      renderSpotsView();
+      toast(`${entry.speciesName} kirjattu päiväkirjaan.`);
+    },
+  });
+}
+
+function exportBackup() {
+  const data = exportAll(STORE_NAMES);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `kala-onni-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Varmuuskopio ladattu.');
+}
+
+async function importBackup(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    const { added, ok } = importAll(data, STORE_NAMES);
+    const total = Object.values(added).reduce((sum, count) => sum + count, 0);
+    showSpots(state.spots);
+    renderJournalView();
+    renderSpotsView();
+    if (!ok) toast('Osa tiedoista ei mahtunut tallennustilaan.', { error: true });
+    else if (total === 0) toast('Kaikki varmuuskopion tiedot olivat jo tallessa.');
+    else toast(`Tuotiin ${added.places} paikkaa ja ${added.catches} saalista.`);
+  } catch {
+    toast('Varmuuskopiota ei voitu lukea. Onko tiedosto Kala-Onnen viemä?', { error: true });
+  }
+}
+
+dom.logCatch.addEventListener('click', startCatchForm);
+dom.savePlace.addEventListener('click', saveSelectedAsPlace);
+
 /* -------------------------------------------------------------------- tabs */
 
-const TABS = ['spots', 'species', 'weather'];
+const TABS = ['spots', 'species', 'weather', 'journal'];
 
 function showTab(name) {
+  if (name === 'journal') renderJournalView();
   for (const tab of TABS) {
     const button = document.getElementById(`tab-${tab}`);
     const view = document.getElementById(`view-${tab}`);
@@ -608,6 +805,7 @@ dom.radius.addEventListener('change', () => {
 });
 
 dom.refresh.addEventListener('click', () => loadSpots());
+dom.addPlace.addEventListener('click', startPlaceForm);
 
 dom.theme.addEventListener('click', () => {
   const current = document.documentElement.getAttribute('data-theme');
@@ -734,6 +932,7 @@ async function boot() {
   cache.prune();          // drop entries written by an older version
   state.hiddenCategories = loadHiddenCategories();
   renderFilterBars();
+  renderJournalView();
   showTab('spots');
   updateConnectionState();
   registerServiceWorker();

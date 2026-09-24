@@ -395,6 +395,101 @@ async function radiusRaceRun(browser) {
   await context.close();
 }
 
+/** Own places and the catch log: the only data the app cannot fetch again. */
+async function journalRun(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    locale: 'fi-FI',
+    permissions: ['geolocation'],
+    geolocation: { latitude: HOME.lat, longitude: HOME.lon },
+    serviceWorkers: 'block',
+    acceptDownloads: true,
+  });
+  const page = await context.newPage();
+  page.on('dialog', (dialog) => dialog.accept());
+  await stubNetwork(page);
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#spots-list .card');
+
+  // --- saving a place of your own ---------------------------------------
+  await page.click('#add-place');
+  await page.waitForSelector('#place-form .form-card');
+  await page.fill('#place-name-input', 'Salainen apaja');
+  await page.fill('#place-note-input', 'kivikko 20 m rannasta');
+  await page.selectOption('#place-water-input', 'jarvi');
+  await page.click('#place-form button[type="submit"]');
+  await page.waitForTimeout(400);
+
+  assert.equal(await page.locator('#place-form .form-card').count(), 0, 'the form closes when saved');
+  const titles = await page.$$eval('#spots-list .card-title', (nodes) => nodes.map((n) => n.textContent));
+  assert.ok(titles.includes('Salainen apaja'), `own place must join the list: ${titles.join(', ')}`);
+  assert.equal(await page.locator('.pin[data-category="oma"]').count(), 1, 'and the map');
+  assert.ok(await page.locator('#panel-filters .chip[data-category="oma"]').isVisible(),
+    'own places get their own filter');
+
+  // --- logging a catch ---------------------------------------------------
+  await page.locator('#spots-list .card').first().click();      // the own place is nearest
+  await page.waitForTimeout(300);
+  await page.click('#log-catch');
+  await page.waitForSelector('#catch-form .form-card');
+  assert.equal(await page.getAttribute('#tab-journal', 'aria-selected'), 'true',
+    'logging opens the journal');
+
+  const conditionsShown = await page.textContent('#catch-form .form-sub');
+  assert.match(conditionsShown, /kalaonni \d+/, 'the form shows the conditions it will store');
+  assert.match(conditionsShown, /Salainen apaja/, 'and where the catch is being logged');
+
+  await page.selectOption('#catch-species-input', 'ahven');
+  await page.fill('#catch-length-input', '28');
+  await page.fill('#catch-method-input', 'Jigi');
+  await page.click('#catch-form button[type="submit"]');
+  await page.waitForTimeout(400);
+
+  const entry = await page.textContent('#journal-content .journal-catch .journal-title');
+  assert.match(entry, /Ahven · 28 cm · Jigi/, `unexpected journal entry: ${entry}`);
+  const entrySub = await page.textContent('#journal-content .journal-catch .journal-sub');
+  assert.match(entrySub, /Salainen apaja/);
+  assert.match(entrySub, /kalaonni \d+/, 'the conditions are kept with the catch');
+  assert.match(await page.textContent('#journal-content .hero-value'), /^1$/);
+  await page.screenshot({ path: join(SHOTS, '9-paivakirja.png') });
+
+  // The spot list now carries the history, which is the point of logging.
+  await page.click('#tab-spots');
+  await page.waitForTimeout(200);
+  const hint = await page.textContent('#spots-list .catch-hint');
+  assert.match(hint, /Olet saanut täältä/);
+  assert.match(hint, /Ahven ×1/);
+
+  // --- it all survives a reload -----------------------------------------
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector('#spots-list .card');
+  assert.ok((await page.$$eval('#spots-list .card-title', (n) => n.map((x) => x.textContent)))
+    .includes('Salainen apaja'), 'own places must survive a reload');
+  await page.click('#tab-journal');
+  await page.waitForTimeout(200);
+  assert.match(await page.textContent('#journal-content .journal-catch .journal-title'), /Ahven/,
+    'the catch log must survive a reload');
+
+  // --- a backup can be taken --------------------------------------------
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#journal-content .stat-row .btn-ghost'),
+  ]);
+  assert.match(download.suggestedFilename(), /^kala-onni-\d{4}-\d{2}-\d{2}\.json$/);
+
+  // --- removing entries --------------------------------------------------
+  await page.click('#journal-content .journal-place .journal-remove');
+  await page.waitForTimeout(300);
+  await page.click('#journal-content .journal-catch .journal-remove');
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('#journal-content .journal-entry').count(), 0,
+    'both entries are gone');
+  assert.equal(await page.locator('.pin[data-category="oma"]').count(), 0,
+    'and the place left the map');
+
+  await context.close();
+}
+
 /** Following the user's position while they browse the map. */
 async function followRun(browser) {
   const context = await browser.newContext({
@@ -774,6 +869,7 @@ async function run() {
 
     await context.close();
 
+    await journalRun(browser);
     await followRun(browser);
     await filterRun(browser);
     await radiusRaceRun(browser);

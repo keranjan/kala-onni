@@ -18,6 +18,8 @@
   /* Spot categories. Three categorical hues are the most that stay apart for
      every kind of colour vision as map markers in both themes, so "meri" is a
      deeper step of the water hue and every marker also carries its own icon. */
+  --cat-oma: #eb6834;            /* your own places share the marked-spot hue,
+                                    and are told apart by the star and a ring */
   --cat-merkitty: #eb6834;
   --cat-jarvi: #2a78d6;
   --cat-joki: #1baf7a;
@@ -47,6 +49,7 @@
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
+    --cat-oma: #d95926;
     --cat-merkitty: #d95926;
     --cat-jarvi: #3987e5;
     --cat-joki: #199e70;
@@ -73,6 +76,7 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --cat-oma: #d95926;
   --cat-merkitty: #d95926;
   --cat-jarvi: #3987e5;
   --cat-joki: #199e70;
@@ -277,6 +281,57 @@ body {
 .place-bar { padding: 12px 16px 10px; border-bottom: 1px solid var(--border); }
 .place-name { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
 .place-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.place-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.btn-small { padding: 6px 11px; font-size: 12.5px; }
+
+/* ---------- forms ---------- */
+
+.form-card {
+  background: var(--surface-2); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 12px;
+}
+.form-card h3 { margin: 0 0 4px; font-size: 14px; }
+.form-card .form-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.field label { font-size: 12px; color: var(--text-secondary); font-weight: 550; }
+.field input, .field select, .field textarea {
+  font: inherit; font-size: 14px; padding: 9px 10px;
+  color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  min-height: 42px;
+}
+.field textarea { min-height: 62px; resize: vertical; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form-actions { display: flex; gap: 8px; margin-top: 4px; }
+.form-actions .btn { flex: 1; }
+.form-note { font-size: 11.5px; color: var(--text-muted); margin-top: 8px; line-height: 1.45; }
+
+/* ---------- journal ---------- */
+
+.stat-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.journal-entry { display: flex; gap: 10px; align-items: flex-start; }
+.journal-when {
+  flex: none; width: 52px; text-align: center;
+  font-size: 11px; color: var(--text-muted); line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.journal-when b { display: block; font-size: 15px; color: var(--text-primary); }
+.journal-main { flex: 1; min-width: 0; }
+.journal-title { font-size: 14px; font-weight: 600; }
+.journal-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.45; }
+.journal-remove {
+  flex: none; background: none; border: 0; cursor: pointer;
+  color: var(--text-muted); font-size: 16px; line-height: 1; padding: 4px 6px;
+  border-radius: 6px;
+}
+.journal-remove:hover { background: var(--surface-3); color: var(--critical); }
+
+.catch-hint {
+  margin-top: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5;
+  background: var(--surface-2); border-left: 3px solid var(--cat-oma);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.catch-hint b { color: var(--text-primary); }
 
 .tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--border); }
 .tab {
@@ -496,6 +551,10 @@ table.data thead th { color: var(--text-muted); font-weight: 600; }
   border: 2px solid var(--surface-1);
 }
 .pin > span { transform: rotate(-45deg); font-size: 12px; line-height: 1; }
+.pin-cat-oma {
+  background: var(--cat-oma);
+  box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--cat-oma), 0 1px 4px rgba(0, 0, 0, .35);
+}
 .pin-cat-merkitty { background: var(--cat-merkitty); }
 .pin-cat-jarvi { background: var(--cat-jarvi); }
 .pin-cat-joki { background: var(--cat-joki); }
@@ -676,6 +735,8 @@ body[data-sheet="full"] .map-fabs { opacity: 0; pointer-events: none; }
 
   /* Touch targets: nothing interactive below 44px. */
   .btn { min-height: 44px; padding: 11px 14px; touch-action: manipulation; }
+  .btn-small { min-height: 44px; }
+  .field-row { grid-template-columns: 1fr; }
   .why summary, .explainer summary { min-height: 44px; align-items: center; display: flex; }
   .chip { min-height: 44px; padding: 6px 14px 6px 6px; font-size: 13px; }
   .chip-mark { width: 24px; height: 24px; font-size: 13px; }

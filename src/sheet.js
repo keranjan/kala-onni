@@ -10,7 +10,7 @@
  */
 
 const SNAPS = ['peek', 'half', 'full'];
-const PEEK_VISIBLE_PX = 186;   // handle + place bar + tabs + a hint of content
+const PEEK_VISIBLE_PX = 220;   // handle + place bar with its actions + tabs
 const DRAG_THRESHOLD_PX = 6;
 
 export function createBottomSheet(panel, { handle, media = '(max-width: 900px)', onSnap } = {}) {

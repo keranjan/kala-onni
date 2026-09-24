@@ -10,7 +10,7 @@
 import { el } from './util.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const PAD = { top: 18, right: 8, bottom: 26, left: 28 };
+const PAD = { top: 18, right: 8, bottom: 36, left: 28 };
 const PLOT_HEIGHT = 150;
 const MAX_BAR_WIDTH = 14;
 const MIN_GAP = 2;
@@ -42,7 +42,7 @@ function columnPath(x, y, width, height, radius = 4) {
  * @param {number} options.selectedIndex
  * @param {(index:number)=>void} options.onSelect
  */
-export function renderScoreChart(container, { scored, windows = [], selectedIndex = 0, onSelect }) {
+export function renderScoreChart(container, { scored, windows = [], sunEvents = [], selectedIndex = 0, onSelect }) {
   container.textContent = '';
   if (!scored.length) {
     container.append(el('p', { class: 'empty' }, 'Ei ennustetietoja.'));
@@ -68,12 +68,16 @@ export function renderScoreChart(container, { scored, windows = [], selectedInde
     const xOf = (i) => PAD.left + i * band + (band - barWidth) / 2;
     const yOf = (score) => PAD.top + PLOT_HEIGHT * (1 - score / 100);
 
+    const sunSummary = sunEvents.length
+      ? ` Aurinko: ${sunEvents.slice(0, 2).map((event) => `${event.kind} ${event.clock}`).join(', ')}.`
+      : '';
     const root = svg('svg', {
       viewBox: `0 0 ${width} ${height}`,
       width: '100%',
       height,
       role: 'img',
-      'aria-label': `Kalaonni tunneittain, ${scored.length} tuntia. Paras ${peakEntry.score} pistettä kello ${peakEntry.hour.time.clock}.`,
+      'aria-label': `Kalaonni tunneittain, ${scored.length} tuntia. `
+        + `Paras ${peakEntry.score} pistettä kello ${peakEntry.hour.time.clock}.${sunSummary}`,
     });
 
     // --- night bands, behind everything ---------------------------------
@@ -120,14 +124,14 @@ export function renderScoreChart(container, { scored, windows = [], selectedInde
       if (time.hour % 6 === 0) {
         root.append(svg('text', {
           x: PAD.left + i * band + band / 2,
-          y: PAD.top + PLOT_HEIGHT + 13,
+          y: PAD.top + PLOT_HEIGHT + 21,
           'text-anchor': 'middle', 'font-size': 10, fill: 'var(--text-muted)',
         }, String(time.hour).padStart(2, '0')));
       }
       if (time.hour === 12) {
         root.append(svg('text', {
           x: PAD.left + i * band + band / 2,
-          y: PAD.top + PLOT_HEIGHT + 24,
+          y: PAD.top + PLOT_HEIGHT + 32,
           'text-anchor': 'middle', 'font-size': 10, fill: 'var(--text-secondary)',
         }, `${time.weekday} ${time.day}.${time.month}.`));
       }
@@ -164,6 +168,32 @@ export function renderScoreChart(container, { scored, windows = [], selectedInde
         }));
       }
     });
+
+    // --- sunrise and sunset ----------------------------------------------
+    // Drawn after the columns and below the axis, in a band of their own, so
+    // a tall bar can never hide them and the hour labels stay clear.
+    const xOfInstant = (instant) => {
+      const first = scored[0].hour.time.instant;
+      const hours = (instant - first) / 3600000;
+      if (hours < -0.5 || hours > scored.length - 0.5) return null;
+      return PAD.left + (hours + 0.5) * band;
+    };
+
+    for (const event of sunEvents) {
+      const x = xOfInstant(event.instant);
+      if (x === null) continue;
+      const baseline = PAD.top + PLOT_HEIGHT;
+      root.append(svg('line', {
+        x1: x, x2: x, y1: baseline - 8, y2: baseline + 2,
+        stroke: 'var(--axis)', 'stroke-width': 1,
+      }));
+      const top = baseline + 4;
+      const points = event.kind === 'nousu'
+        ? `${x},${top} ${x - 4},${top + 6} ${x + 4},${top + 6}`
+        : `${x},${top + 6} ${x - 4},${top} ${x + 4},${top}`;
+      root.append(svg('polygon', { points, fill: 'var(--text-secondary)' }));
+      root.append(svg('title', {}, `Auringon${event.kind} ${event.clock}`));
+    }
 
     // --- one direct label: the peak ---------------------------------------
     const peakIndex = scored.indexOf(peakEntry);
