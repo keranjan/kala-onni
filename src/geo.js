@@ -29,6 +29,45 @@ export function locateMe({ timeout = 15000 } = {}) {
   });
 }
 
+/**
+ * Follow the device position until the returned function is called.
+ * Used while browsing the map, so the dot, the distances and – when the user
+ * asks for it – the map view keep up as they move.
+ */
+export function watchLocation({ onPosition, onError } = {}) {
+  if (!('geolocation' in navigator)) {
+    onError?.(new Error('Selaimesi ei tue paikannusta.'));
+    return () => {};
+  }
+
+  const id = navigator.geolocation.watchPosition(
+    (position) => onPosition?.({
+      lat: position.coords.latitude,
+      lon: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+      at: position.timestamp,
+    }),
+    (error) => {
+      // A watch reports POSITION_UNAVAILABLE and TIMEOUT whenever the fix
+      // drops – indoors, in a tunnel, while the GPS warms up – and then
+      // recovers on its own. Only a denied permission ends the tracking.
+      const messages = {
+        1: 'Paikannus estetty. Salli sijainnin käyttö selaimen asetuksista.',
+        2: 'Sijaintia ei juuri nyt saada selville.',
+        3: 'Sijainnin haku kesti liian kauan.',
+      };
+      const reported = new Error(messages[error.code] || 'Paikannus epäonnistui.');
+      reported.code = error.code;
+      reported.fatal = error.code === 1;
+      onError?.(reported);
+    },
+    // A fresh fix matters more than battery here, but a few seconds old is fine.
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
+  );
+
+  return () => navigator.geolocation.clearWatch(id);
+}
+
 /** Free-text place search, biased towards Finland. */
 export async function searchPlaces(query, { limit = 6 } = {}) {
   const params = new URLSearchParams({

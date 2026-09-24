@@ -258,6 +258,16 @@ async function loadHalf({ name, key, query, timeoutMs, deadline, ttlMs, signal }
 }
 
 /**
+ * Re-measure the spots from a new point, keeping the order they were found in.
+ * Re-sorting on every position update would make the list jump around while
+ * the user walks; a new search sorts again.
+ */
+export function recomputeDistances(spots, from) {
+  if (!from) return spots;
+  return spots.map((spot) => ({ ...spot, distanceKm: distanceKm(from, spot) }));
+}
+
+/**
  * Fetch spots around a coordinate.
  *
  * The two halves run in parallel and are cached separately. `onPartial` fires

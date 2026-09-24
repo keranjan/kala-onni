@@ -12,6 +12,11 @@ sen voi asentaa kotivalikkoon ja se avautuu myös ilman verkkoyhteyttä.
 
 **Kartta ja kalapaikat**
 - Paikannus selaimen sijainnilla, paikkakuntahaku tai kartan napautus
+- Sijainnin seuranta kartalla: piste liikkuu mukana, etäisyydet päivittyvät
+  sitä mukaa kun liikut, ja kartta pysyy keskitettynä sinuun. Kartan
+  tarttuminen lopettaa keskittämisen – painike keskittää takaisin, toinen
+  painallus lopettaa seurannan
+- Kun karttaa selaa pois hakualueelta, ilmestyy “Hae tältä alueelta”
 - Lähialueen kohteet OpenStreetMapista 5–50 km säteellä: merkityt
   kalastuspaikat, järvet, joet, lammet, laiturit ja veneluiskat
 - Haku tehdään kahdessa osassa: merkityt kalastuspaikat vastaavat nopeasti ja

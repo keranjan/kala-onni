@@ -38,6 +38,15 @@ export function distanceKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/**
+ * Has the map been panned far enough from the search centre that the results
+ * no longer describe what the user is looking at?
+ */
+export function hasPannedAway(mapCenter, searchOrigin, radiusKm) {
+  if (!mapCenter || !searchOrigin) return false;
+  return distanceKm(mapCenter, searchOrigin) > Math.max(0.5, radiusKm * 0.35);
+}
+
 export function formatDistance(km) {
   if (km < 1) return `${Math.round(km * 1000)} m`;
   if (km < 10) return `${km.toFixed(1).replace('.', ',')} km`;

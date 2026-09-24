@@ -214,6 +214,24 @@ async function mobileRun(browser) {
   assert.ok(fab.width >= 44 && fab.height >= 44, 'the FAB must be a full tap target');
   assert.ok(await page.locator('#locate-btn').isHidden(), 'the header button is replaced on phones');
 
+  // The thumb-zone button follows the user; panning hands the map back.
+  await page.tap('#locate-fab');
+  await page.waitForTimeout(900);
+  assert.equal(await page.getAttribute('#locate-fab', 'aria-pressed'), 'true',
+    'tapping the button should start following');
+  const mapBoxForPan = await page.locator('#map').boundingBox();
+  await swipe(page, {
+    x: mapBoxForPan.x + mapBoxForPan.width / 2,
+    fromY: mapBoxForPan.y + 120,
+    toY: mapBoxForPan.y + 320,
+  });
+  await page.waitForTimeout(700);
+  assert.equal(await page.getAttribute('#locate-fab', 'aria-pressed'), 'false',
+    'panning must stop the recentring on a phone too');
+  assert.ok(await page.locator('#area-search').isVisible(), 'and offer a search of what is shown');
+  await page.tap('#locate-fab');            // back to following, and centred
+  await page.waitForTimeout(700);
+
   // OpenStreetMap attribution has to stay visible above the sheet.
   const attribution = await page.locator('.leaflet-control-attribution').boundingBox();
   assert.ok(attribution.y + attribution.height <= sheetTop + 2, 'attribution must stay visible');
@@ -373,6 +391,87 @@ async function radiusRaceRun(browser) {
   assert.equal(recreated.length, 0,
     `unchanged markers were rebuilt and blink: ${recreated.join(', ')}`);
   assert.equal(after.length, before.length, 'the same markers should be on the map');
+
+  await context.close();
+}
+
+/** Following the user's position while they browse the map. */
+async function followRun(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 860 },
+    locale: 'fi-FI',
+    permissions: ['geolocation'],
+    geolocation: { latitude: HOME.lat, longitude: HOME.lon },
+    serviceWorkers: 'block',
+  });
+  const page = await context.newPage();
+  await stubNetwork(page);
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#spots-list .card');
+
+  const centreOf = async (selector) => {
+    const box = await page.locator(selector).first().boundingBox();
+    return box && { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  const away = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  // On a wide screen the control lives in the header; the phone has the FAB.
+  assert.ok(await page.locator('#locate-fab').isHidden(), 'the floating button is for phones');
+  const fab = page.locator('#locate-btn');
+  assert.equal(await fab.getAttribute('aria-pressed'), 'false');
+
+  await fab.click();
+  await page.waitForTimeout(700);
+  assert.equal(await fab.getAttribute('aria-pressed'), 'true', 'the button must show that it is following');
+
+  const mapCentre = await centreOf('#map');
+  let dot = await centreOf('.me-dot');
+  assert.ok(away(dot, mapCentre) < 60, `the map should centre on the user, off by ${Math.round(away(dot, mapCentre))}px`);
+
+  // Walking: a new fix moves the dot, keeps it centred, and re-measures the list.
+  const distanceBefore = await page.textContent('#spots-list .card-dist');
+  await context.setGeolocation({ latitude: HOME.lat + 0.02, longitude: HOME.lon + 0.01 });
+  await page.waitForTimeout(900);
+
+  const distanceAfter = await page.textContent('#spots-list .card-dist');
+  assert.notEqual(distanceAfter, distanceBefore, 'distances must follow the user');
+  dot = await centreOf('.me-dot');
+  assert.ok(away(dot, mapCentre) < 60, 'while following, the map keeps the user in the middle');
+
+  // Taking hold of the map stops the recentring and offers a search of what is shown.
+  await page.mouse.move(mapCentre.x, mapCentre.y);
+  await page.mouse.down();
+  await page.mouse.move(mapCentre.x - 260, mapCentre.y - 160, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+
+  assert.equal(await fab.getAttribute('aria-pressed'), 'false', 'panning stops the recentring');
+  assert.ok(await fab.evaluate((node) => node.classList.contains('is-adrift')),
+    'the button should show that it is still tracking but no longer centring');
+  assert.ok(await page.locator('#area-search').isVisible(), 'panning away must offer a new search');
+  await page.screenshot({ path: join(SHOTS, '8-seuranta.png') });
+
+  // The dot keeps moving even though the map no longer follows it.
+  await context.setGeolocation({ latitude: HOME.lat + 0.03, longitude: HOME.lon + 0.015 });
+  await page.waitForTimeout(800);
+  dot = await centreOf('.me-dot');
+  assert.ok(!dot || away(dot, mapCentre) > 40, 'the map must stay where the user left it');
+
+  // Searching the visible area re-runs the search around it.
+  await page.click('#area-search');
+  await page.waitForTimeout(1500);
+  assert.ok(await page.locator('#area-search').isHidden(), 'the offer goes away once taken');
+  assert.ok((await page.$$eval('#spots-list .card', (n) => n.length)) > 0, 'the new area has results');
+
+  // Tapping again recentres; once more stops following altogether.
+  await fab.click();
+  await page.waitForTimeout(700);
+  assert.equal(await fab.getAttribute('aria-pressed'), 'true');
+  await fab.click();
+  await page.waitForTimeout(300);
+  assert.equal(await fab.getAttribute('aria-pressed'), 'false');
+  assert.ok(!(await fab.evaluate((node) => node.classList.contains('is-adrift'))),
+    'stopping clears the tracking state');
 
   await context.close();
 }
@@ -675,6 +774,7 @@ async function run() {
 
     await context.close();
 
+    await followRun(browser);
     await filterRun(browser);
     await radiusRaceRun(browser);
     await checkPwaAssets();

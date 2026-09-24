@@ -38,7 +38,7 @@
     </form>
 
     <div class="header-actions">
-      <button type="button" class="btn btn-primary" id="locate-btn">
+      <button type="button" class="btn btn-primary" id="locate-btn" aria-pressed="false">
         <span aria-hidden="true">📍</span> Paikanna minut
       </button>
       <button type="button" class="btn btn-ghost" id="install-btn" hidden>Asenna</button>
@@ -50,8 +50,12 @@
     <section class="map-wrap" aria-label="Kartta">
       <div id="map"></div>
       <div class="map-hint" id="map-hint">Napauta karttaa valitaksesi paikan</div>
+      <button type="button" class="map-action" id="area-search" hidden>
+        Hae tältä alueelta
+      </button>
       <div class="map-fabs">
-        <button type="button" class="fab fab-primary" id="locate-fab" aria-label="Paikanna minut">
+        <button type="button" class="fab fab-primary" id="locate-fab"
+                aria-pressed="false" aria-label="Seuraa sijaintiani">
           <span aria-hidden="true">📍</span>
         </button>
       </div>

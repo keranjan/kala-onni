@@ -7,11 +7,11 @@
  */
 
 import { DEFAULT_LOCATION } from './config.js';
-import { $, cache, debounce, distanceKm } from './util.js';
+import { $, cache, debounce, distanceKm, hasPannedAway, formatDistance } from './util.js';
 import { createMap } from './map.js';
 import { createBottomSheet } from './sheet.js';
-import { locateMe, searchPlaces, describeLocation } from './geo.js';
-import { fetchSpots } from './spots.js';
+import { locateMe, watchLocation, searchPlaces, describeLocation } from './geo.js';
+import { fetchSpots, recomputeDistances } from './spots.js';
 import { fetchWeather } from './weather.js';
 import { scoreHours, upcomingHours, bestWindows } from './score.js';
 import { matchSpecies, getSpecies, GENERIC_PROFILE, WATER_TYPES } from './species.js';
@@ -24,6 +24,9 @@ const state = {
   origin: { ...DEFAULT_LOCATION },
   radiusKm: 10,
   spots: [],
+  /** Where the user is right now, if they let us follow along. */
+  position: null,
+  following: false,
   hiddenCategories: new Set(),
   spotsNotice: null,
   selectedSpot: null,
@@ -52,6 +55,7 @@ const dom = {
   mapHint: $('#map-hint'),
   mapFilters: $('#map-filters'),
   panelFilters: $('#panel-filters'),
+  areaSearch: $('#area-search'),
   panel: $('#panel'),
   sheetHandle: $('#sheet-handle'),
   locateFab: $('#locate-fab'),
@@ -64,7 +68,17 @@ const mapView = createMap('map', {
     dismissMapHint();
     setOrigin({ lat, lon }, { label: 'Valittu kohta kartalla', lookUpName: true });
   },
+  // Taking hold of the map means "I want to look around", so stop recentring
+  // and offer a search of what is now on screen.
+  onUserPan: () => {
+    if (state.following) setFollowing(false, { keepWatching: true });
+  },
+  // The centre is only known once the map has come to rest.
+  onMoveEnd: () => updateAreaSearchButton(),
 });
+
+/** Distances are measured from the user when we know where they are. */
+const measuringPoint = () => state.position || state.origin;
 
 /** On a phone the panel is a draggable sheet that covers part of the map. */
 const sheet = createBottomSheet(dom.panel, {
@@ -110,7 +124,7 @@ function renderPlaceBar() {
   const bits = [];
   if (spot) {
     const type = WATER_TYPES[spot.waterType] || WATER_TYPES.tuntematon;
-    bits.push(type.label, `${spot.distanceKm.toFixed(1).replace('.', ',')} km sijainnistasi`);
+    bits.push(type.label, `${formatDistance(spot.distanceKm)} ${state.position ? 'sinusta' : 'hakupisteestä'}`);
   } else if (state.origin.meta) {
     bits.push(state.origin.meta);
   }
@@ -239,8 +253,13 @@ function recomputeScores() {
 /* ----------------------------------------------------------------- actions */
 
 /** The map hint is onboarding, not chrome: it steps aside once it is understood. */
-function dismissMapHint() {
+function dismissMapHint({ immediate = false } = {}) {
+  if (dom.mapHint.hidden) return;
   dom.mapHint.classList.add('is-hidden');
+  // It shares its slot with the "search this area" button, so once that is
+  // needed the hint gets out of the way for good.
+  if (immediate) dom.mapHint.hidden = true;
+  else setTimeout(() => { dom.mapHint.hidden = true; }, 400);
 }
 
 /** What to tell the reader when only part of the search came through. */
@@ -257,7 +276,9 @@ function spotsNoticeFor(result) {
 }
 
 function showSpots(spots) {
-  state.spots = spots;
+  // Measure from where the user is, not from where the search started.
+  state.spots = state.position ? recomputeDistances(spots, state.position) : spots;
+  spots = state.spots;
 
   // Re-point the selection at the fresh object. The first, fast half of the
   // search cannot know which lake a pier belongs to; the full result can, and
@@ -357,6 +378,7 @@ async function setOrigin({ lat, lon, accuracy = null }, { label = null, lookUpNa
   mapView.setUserLocation({ lat, lon, accuracy });
   mapView.setRadius({ lat, lon, radiusKm: state.radiusKm });
   mapView.fitTo(lat, lon, state.radiusKm, { offsetY: mapOffset() });
+  dom.areaSearch.hidden = true;
   renderPlaceBar();
   writeHash();
 
@@ -397,6 +419,144 @@ function selectSpecies(speciesId) {
   if (speciesId) showTab('weather');
 }
 
+/* ------------------------------------------------------ following the user */
+
+let stopWatching = null;
+let lastMeasuredFrom = null;
+
+/** Start or stop the position watch. The dot keeps moving while it runs. */
+function setWatching(on) {
+  if (on === Boolean(stopWatching)) return;
+  if (!on) {
+    stopWatching?.();
+    stopWatching = null;
+    return;
+  }
+  stopWatching = watchLocation({
+    onPosition: onPositionUpdate,
+    onError: handleWatchError,
+  });
+}
+
+/** The header button and the map button are one control in two places. */
+const locateControls = () => [dom.locate, dom.locateFab];
+
+let warnedAboutFix = false;
+
+/**
+ * A dropped fix is not a reason to stop following – it comes back. Only a
+ * denied permission ends the tracking, and we say so once.
+ */
+function handleWatchError(error) {
+  if (error.fatal) {
+    toast(error.message, { error: true });
+    setFollowing(false);
+    setWatching(false);
+    return;
+  }
+  if (!state.position && !warnedAboutFix) {
+    warnedAboutFix = true;
+    toast(`${error.message} Seuranta jatkuu.`);
+  }
+}
+
+function setFollowing(following, { keepWatching = false } = {}) {
+  state.following = following;
+  const adrift = !following && Boolean(stopWatching);
+
+  for (const control of locateControls()) {
+    control.setAttribute('aria-pressed', String(following));
+    control.classList.toggle('is-adrift', adrift);
+    control.setAttribute('aria-label', following ? 'Lopeta sijainnin seuranta' : 'Seuraa sijaintiani');
+  }
+  dom.locate.innerHTML = following
+    ? '<span aria-hidden="true">📍</span> Seurataan'
+    : `<span aria-hidden="true">📍</span> ${adrift ? 'Keskitä minuun' : 'Paikanna minut'}`;
+
+  if (!following && !keepWatching) setWatching(false);
+}
+
+/** A new fix: move the dot, re-measure the spots, and recentre if asked to. */
+function onPositionUpdate(position) {
+  state.position = position;
+  mapView.setUserLocation(position);
+
+  if (state.following) {
+    mapView.panTo(position.lat, position.lon, { offsetY: mapOffset() });
+    updateAreaSearchButton();
+  }
+
+  // Re-measuring on every fix would rewrite the list several times a second.
+  const moved = !lastMeasuredFrom || distanceKm(lastMeasuredFrom, position) > 0.02;
+  if (moved && state.spots.length) {
+    lastMeasuredFrom = position;
+    showSpots(state.spots);
+  } else if (moved) {
+    lastMeasuredFrom = position;
+  }
+  renderPlaceBar();
+}
+
+/**
+ * Tap once to follow, again to recentre after panning away, again to stop.
+ * That is the behaviour people already know from map apps.
+ */
+async function toggleFollow() {
+  if (!stopWatching) {
+    for (const control of locateControls()) {
+      control.classList.add('is-busy');
+      control.disabled = true;
+    }
+    try {
+      const position = await locateMe();
+      onPositionUpdate(position);
+      setWatching(true);
+      setFollowing(true);
+      mapView.panTo(position.lat, position.lon, { offsetY: mapOffset() });
+      updateAreaSearchButton();
+    } catch (error) {
+      toast(error.message, { error: true });
+    } finally {
+      for (const control of locateControls()) {
+        control.classList.remove('is-busy');
+        control.disabled = false;
+      }
+    }
+    return;
+  }
+
+  if (!state.following) {
+    setFollowing(true);
+    if (state.position) mapView.panTo(state.position.lat, state.position.lon, { offsetY: mapOffset() });
+    updateAreaSearchButton();
+    return;
+  }
+
+  setFollowing(false);
+  setWatching(false);
+  for (const control of locateControls()) control.classList.remove('is-adrift');
+}
+
+/** Offer a new search once the map no longer shows the searched area. */
+function updateAreaSearchButton() {
+  const away = hasPannedAway(mapView.getCenter(), state.origin, state.radiusKm);
+  dom.areaSearch.hidden = !away;
+  if (away) dismissMapHint({ immediate: true });
+}
+
+dom.areaSearch.addEventListener('click', () => {
+  const center = mapView.getCenter();
+  dom.areaSearch.hidden = true;
+  setFollowing(false, { keepWatching: true });
+  setOrigin(center, { label: 'Kartalta valittu alue', lookUpName: true });
+});
+
+// A watch in the background drains the battery without telling anyone anything.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) setWatching(false);
+  else if (state.following) setWatching(true);
+});
+
 /* -------------------------------------------------------------------- tabs */
 
 const TABS = ['spots', 'species', 'weather'];
@@ -430,26 +590,8 @@ for (const tab of TABS) {
 
 /* ---------------------------------------------------------------- controls */
 
-async function runLocate() {
-  dom.locate.disabled = true;
-  dom.locate.textContent = 'Paikannetaan…';
-  dom.locateFab.classList.add('is-busy');
-  dom.locateFab.disabled = true;
-  try {
-    const position = await locateMe();
-    await setOrigin(position, { label: 'Nykyinen sijaintisi', lookUpName: true });
-  } catch (error) {
-    toast(error.message, { error: true });
-  } finally {
-    dom.locate.disabled = false;
-    dom.locate.innerHTML = '<span aria-hidden="true">📍</span> Paikanna minut';
-    dom.locateFab.classList.remove('is-busy');
-    dom.locateFab.disabled = false;
-  }
-}
-
-dom.locate.addEventListener('click', runLocate);
-dom.locateFab.addEventListener('click', runLocate);
+dom.locate.addEventListener('click', toggleFollow);
+dom.locateFab.addEventListener('click', toggleFollow);
 
 dom.radius.addEventListener('change', () => {
   state.radiusKm = Number(dom.radius.value);
@@ -460,6 +602,7 @@ dom.radius.addEventListener('change', () => {
   }
   mapView.setRadius({ ...state.origin, radiusKm: state.radiusKm });
   mapView.fitTo(state.origin.lat, state.origin.lon, state.radiusKm, { offsetY: mapOffset() });
+  updateAreaSearchButton();
   writeHash();
   loadSpots();
 });
@@ -605,8 +748,10 @@ async function boot() {
     setOrigin(DEFAULT_LOCATION, { name: DEFAULT_LOCATION.name, label: DEFAULT_LOCATION.meta });
     try {
       const position = await locateMe({ timeout: 8000 });
+      state.position = position;          // distances are measured from here on
       const moved = distanceKm(position, DEFAULT_LOCATION) > 1;
       if (moved) await setOrigin(position, { label: 'Nykyinen sijaintisi', lookUpName: true });
+      else showSpots(state.spots);
     } catch {
       dom.mapHint.textContent = 'Salli paikannus, hae paikkakunta tai napauta karttaa';
     }

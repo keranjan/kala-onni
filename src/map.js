@@ -5,7 +5,7 @@ import { WATER_TYPES } from './species.js';
 import { categoryFor } from './spot-types.js';
 import { formatDistance } from './util.js';
 
-export function createMap(elementId, { onPick } = {}) {
+export function createMap(elementId, { onPick, onUserPan, onMoveEnd } = {}) {
   const map = L.map(elementId, {
     zoomControl: true,
     attributionControl: true,
@@ -27,6 +27,15 @@ export function createMap(elementId, { onPick } = {}) {
   map.on('click', (event) => {
     onPick?.({ lat: event.latlng.lat, lon: event.latlng.lng });
   });
+
+  // Only a real drag or pinch counts: programmatic moves must not look like
+  // the user taking over the map.
+  map.on('dragstart', () => onUserPan?.());
+  map.on('zoomstart', (event) => {
+    if (!event.hard) onUserPan?.({ zoom: true });
+  });
+  // Anything that reads the new centre has to wait for the move to finish.
+  map.on('moveend', () => onMoveEnd?.());
 
   function setUserLocation({ lat, lon, accuracy = null }) {
     const position = [lat, lon];
@@ -195,7 +204,33 @@ export function createMap(elementId, { onPick } = {}) {
     });
   }
 
-  return { map, setUserLocation, setRadius, setSpots, highlightSpot, flyTo, fitTo, invalidate: () => map.invalidateSize() };
+  /** Centre on a point without changing the zoom, allowing for the sheet. */
+  function panTo(lat, lon, { offsetY = 0, animate = true } = {}) {
+    let center = L.latLng(lat, lon);
+    if (offsetY > 0) {
+      const point = map.project(center, map.getZoom()).add([0, offsetY / 2]);
+      center = map.unproject(point, map.getZoom());
+    }
+    map.panTo(center, { animate, duration: 0.5 });
+  }
+
+  const getCenter = () => {
+    const center = map.getCenter();
+    return { lat: center.lat, lon: center.lng };
+  };
+
+  return {
+    map,
+    setUserLocation,
+    setRadius,
+    setSpots,
+    highlightSpot,
+    flyTo,
+    fitTo,
+    panTo,
+    getCenter,
+    invalidate: () => map.invalidateSize(),
+  };
 }
 
 function escapeForPopup(text) {

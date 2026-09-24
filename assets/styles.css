@@ -219,6 +219,23 @@ body {
   max-width: calc(100% - 28px); text-align: center;
   transition: opacity .4s ease, transform .4s ease;
 }
+.map-action {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 620;
+  padding: 9px 16px; border-radius: 999px;
+  font: inherit; font-size: 13px; font-weight: 600;
+  background: var(--accent); color: #fff;
+  border: 0; box-shadow: var(--shadow-1);
+  cursor: pointer; touch-action: manipulation;
+}
+.map-action[hidden] { display: none; }
+.map-action:hover { background: var(--accent-ink); }
+
+/* The locate button has three states: off, following, and following but
+   left behind after the user panned the map. */
+.fab[aria-pressed="true"] { box-shadow: var(--shadow-1), 0 0 0 3px var(--accent-soft); }
+.fab.is-adrift { background: var(--surface-1); color: var(--text-primary); }
+
 .map-hint.is-hidden { opacity: 0; transform: translateX(-50%) translateY(-6px); pointer-events: none; }
 .map-filters {
   left: 12px; bottom: 22px; max-width: min(460px, calc(100% - 24px));

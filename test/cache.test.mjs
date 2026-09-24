@@ -192,3 +192,34 @@ test('prune clears stale cache entries and nothing else', () => {
   assert.equal(localStorage.getItem('kalaonni:filters'), '["jarvi"]');
   assert.ok(localStorage.getItem('muu-sovellus:avain'), 'other apps are left alone');
 });
+
+test('spots are re-measured from where the user is, keeping their order', async () => {
+  const { recomputeDistances } = await import('../src/spots.js');
+  const spots = [
+    { id: 'a', lat: 61.50, lon: 23.76, distanceKm: 0.2 },
+    { id: 'b', lat: 61.55, lon: 23.80, distanceKm: 5.8 },
+  ];
+  const moved = recomputeDistances(spots, { lat: 61.55, lon: 23.80 });
+
+  assert.deepEqual(moved.map((s) => s.id), ['a', 'b'], 'the order must not jump around while walking');
+  assert.ok(moved[0].distanceKm > spots[0].distanceKm, 'the first spot is now further away');
+  assert.ok(moved[1].distanceKm < 0.01, 'the second one is underfoot');
+  assert.equal(spots[0].distanceKm, 0.2, 'the originals are left alone');
+  assert.equal(recomputeDistances(spots, null), spots, 'without a position nothing changes');
+});
+
+test('a new search is offered once the map no longer shows the searched area', async () => {
+  const { hasPannedAway } = await import('../src/util.js');
+  const origin = { lat: 61.4978, lon: 23.761 };
+
+  assert.equal(hasPannedAway(origin, origin, 10), false);
+  assert.equal(hasPannedAway({ lat: 61.51, lon: 23.78 }, origin, 10), false, 'a nudge is not a pan');
+  assert.equal(hasPannedAway({ lat: 61.58, lon: 23.90 }, origin, 10), true);
+
+  // With a small radius even a short pan leaves the searched area behind,
+  // but never below the half-kilometre floor.
+  assert.equal(hasPannedAway({ lat: 61.5020, lon: 23.7650 }, origin, 5), false);
+  assert.equal(hasPannedAway({ lat: 61.5300, lon: 23.8000 }, origin, 5), true);
+  assert.equal(hasPannedAway(null, origin, 10), false);
+  assert.equal(hasPannedAway(origin, null, 10), false);
+});
